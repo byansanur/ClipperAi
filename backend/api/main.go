@@ -56,6 +56,7 @@ func main() {
 	{
 		v1.POST("/clips", handler.SubmitClip)
 		v1.GET("/clips/:id", handler.GetClipStatus)
+		v1.DELETE("/clips/:id", handler.CancelClip)
 	}
 
 	log.Printf("[MAIN] Server starting on :%s", port)

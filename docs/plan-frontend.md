@@ -766,6 +766,7 @@ class _ResultViewState extends State<ResultView> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal membuka link unduh.')),
       );
@@ -784,130 +785,131 @@ class _ResultViewState extends State<ResultView> {
     final provider = Provider.of<ClipProvider>(context);
 
     return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF0F0F12), Color(0xFF151525)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
+      color: Colors.black,
       child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Bagian Kiri: Video Player dengan aspect ratio 9:16 vertikal
-                Expanded(
-                  flex: 5,
-                  child: AspectRatio(
-                    aspectRatio: 9 / 16,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.circular(24),
-                        border: BorderSide(color: Colors.white.withOpacity(0.08)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Theme.of(context).primaryColor.withOpacity(0.2),
-                            blurRadius: 32,
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Video(
-                        controller: controller,
-                        controls: AdaptiveVideoControls,
-                      ),
-                    ),
-                  ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 450),
+          child: Stack(
+            children: [
+              // Layer 1: Video Player (Background)
+              Positioned.fill(
+                child: Video(
+                  controller: controller,
+                  fit: BoxFit.cover,
+                  controls: NoVideoControls, // UI bersih ala TikTok
                 ),
-                const SizedBox(width: 48),
-                
-                // Bagian Kanan: Aksi & Informasi
-                Expanded(
-                  flex: 6,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.secondary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'SUKSES DI-GENERATE 🎉',
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.secondary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
-                            letterSpacing: 1.0,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'Klip Video Anda Telah Siap!',
-                        style: Theme.of(context).textTheme.displayLarge?.copyWith(fontSize: 32),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'AI berhasil memotong bagian yang paling menarik dan mengoptimalkannya '
-                        'menjadi format vertikal 9:16 yang ramah untuk media sosial seperti TikTok, Shorts, dan Reels.',
-                        style: TextStyle(color: Colors.white.withOpacity(0.6), height: 1.6),
-                      ),
-                      const SizedBox(height: 40),
-                      
-                      // Tombol Download
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(56),
-                        ),
-                        onPressed: () => _downloadVideo(provider.videoUrl ?? ''),
-                        icon: const Icon(Icons.download_rounded),
-                        label: const Text(
-                          'Download Video Clip',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      
-                      // Tombol Salin Link
-                      OutlinedButton.icon(
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size.fromHeight(56),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          side: BorderSide(color: Colors.white.withOpacity(0.15)),
-                          foregroundColor: Colors.white,
-                        ),
-                        onPressed: () => _copyToClipboard(provider.videoUrl ?? ''),
-                        icon: const Icon(Icons.copy_rounded),
-                        label: const Text('Salin Link Video'),
-                      ),
-                      const SizedBox(height: 24),
-                      const Divider(color: Colors.white10),
-                      const SizedBox(height: 16),
-                      
-                      // Tombol Buat Klip Baru
-                      TextButton.icon(
-                        onPressed: () => provider.reset(),
-                        icon: const Icon(Icons.arrow_back_rounded, size: 18),
-                        label: const Text(
-                          'Gunting Video Baru',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+              ),
+
+              // Layer 2: Gradient Overlay
+              const _GradientOverlay(),
+
+              // Layer 3: Text Content (Pojok Kiri Bawah)
+              const _TikTokTextInfo(),
+
+              // Layer 4: Action Buttons (Kolom Kanan Bawah)
+              _TikTokActionColumn(
+                onDownload: () => _downloadVideo(provider.videoUrl ?? ''),
+                onCopyLink: () => _copyToClipboard(provider.videoUrl ?? ''),
+                onReset: () => provider.reset(),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _GradientOverlay extends StatelessWidget {
+  const _GradientOverlay();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Positioned.fill(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.transparent, Colors.transparent, Colors.black54, Colors.black87],
+            stops: [0.0, 0.6, 0.85, 1.0],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TikTokTextInfo extends StatelessWidget {
+  const _TikTokTextInfo();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 20, left: 16, right: 80,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
+            child: const Text('SUKSES DI-GENERATE 🎉', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+          ),
+          const SizedBox(height: 12),
+          const Text('Klip Video Anda Telah Siap!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          const SizedBox(height: 8),
+          Text('AI berhasil memotong bagian yang paling menarik dan mengoptimalkannya menjadi format vertikal 9:16.', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
+        ],
+      ),
+    );
+  }
+}
+
+class _TikTokActionColumn extends StatelessWidget {
+  final VoidCallback onDownload, onCopyLink, onReset;
+  const _TikTokActionColumn({required this.onDownload, required this.onCopyLink, required this.onReset});
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      bottom: 20, right: 16,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ActionButton(icon: Icons.download_rounded, label: 'Download', onTap: onDownload),
+          const SizedBox(height: 24),
+          _ActionButton(icon: Icons.link_rounded, label: 'Copy Link', onTap: onCopyLink),
+          const SizedBox(height: 24),
+          _ActionButton(icon: Icons.add_circle_outline_rounded, label: 'Buat Baru', onTap: onReset),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _ActionButton({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.black.withOpacity(0.4), border: Border.all(color: Colors.white.withOpacity(0.2))),
+            child: Icon(icon, color: Colors.white, size: 26),
+          ),
+          const SizedBox(height: 6),
+          Text(label, style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }

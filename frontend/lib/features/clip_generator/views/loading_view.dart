@@ -39,6 +39,7 @@ class LoadingView extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                   letterSpacing: 0.5,
                 ),
+                textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               
@@ -70,7 +71,7 @@ class LoadingView extends StatelessWidget {
               
               // Tombol Batal
               TextButton.icon(
-                onPressed: () => provider.reset(),
+                onPressed: () => provider.cancelJob(),
                 icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
                 label: const Text(
                   'Batalkan & Kembali',

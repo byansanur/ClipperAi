@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../providers/clip_provider.dart';
 import 'loading_view.dart';
 import 'result_view.dart';
+import '../models/job_response.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -51,8 +53,11 @@ class _HomePageState extends State<HomePage> {
                   padding: const EdgeInsets.all(24.0),
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 600),
-                    child: Card(
-                      color: Theme.of(context).cardColor.withOpacity(0.85),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Card(
+                          color: Theme.of(context).cardColor.withOpacity(0.85),
                       elevation: 32,
                       shadowColor: Colors.black.withOpacity(0.5),
                       shape: RoundedRectangleBorder(
@@ -222,6 +227,12 @@ class _HomePageState extends State<HomePage> {
                           ),
                         ),
                       ),
+                        ),
+                        if (provider.savedJobIds.isNotEmpty) ...[
+                          const SizedBox(height: 32),
+                          ActiveJobsCard(provider: provider),
+                        ],
+                      ],
                     ),
                   ),
                 ),
@@ -264,6 +275,125 @@ class HeaderWidget extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyMedium,
         ),
       ],
+    );
+  }
+}
+
+class ActiveJobsCard extends StatelessWidget {
+  final ClipProvider provider;
+  const ActiveJobsCard({super.key, required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 600),
+      child: Card(
+        color: Theme.of(context).cardColor.withOpacity(0.85),
+        elevation: 16,
+        shadowColor: Colors.black.withOpacity(0.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: BorderSide(
+            color: Theme.of(context).primaryColor.withOpacity(0.1),
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.history, color: Colors.grey),
+                  SizedBox(width: 8),
+                  Text(
+                    'Riwayat Pekerjaan',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ...provider.savedJobIds.map((id) {
+                final status = provider.jobStatuses[id];
+                return _buildJobTile(context, id, status);
+              }).toList(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildJobTile(BuildContext context, String id, JobResponse? job) {
+    IconData icon;
+    Color color;
+    String statusText;
+
+    if (job == null) {
+      icon = Icons.hourglass_empty;
+      color = Colors.grey;
+      statusText = 'Loading...';
+    } else {
+      switch (job.status) {
+        case ClipStatus.completed:
+          icon = Icons.check_circle;
+          color = Colors.green;
+          statusText = 'Selesai';
+          break;
+        case ClipStatus.failed:
+          icon = Icons.error;
+          color = Colors.red;
+          statusText = 'Gagal';
+          break;
+        default:
+          icon = Icons.sync;
+          color = Colors.blue;
+          statusText = 'Memproses';
+      }
+    }
+
+    return Card(
+      color: Colors.white.withOpacity(0.05),
+      elevation: 0,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Icon(icon, color: color),
+        title: Text(
+          'Job ID: ${id.substring(0, 8)}...',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        subtitle: Text(
+          statusText,
+          style: TextStyle(color: color),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (job?.status == ClipStatus.completed && job?.videoPath != null)
+              IconButton(
+                icon: const Icon(Icons.download, color: Colors.blueAccent),
+                tooltip: 'Download',
+                onPressed: () async {
+                  final url = Uri.parse(provider.getFullUrl(job!.videoPath!));
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  }
+                },
+              ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.grey),
+              tooltip: 'Hapus Riwayat',
+              onPressed: () => provider.removeJob(id),
+            ),
+          ],
+        ),
+        onTap: () {
+          provider.resumeJob(id);
+        },
+      ),
     );
   }
 }

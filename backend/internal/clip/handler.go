@@ -1,7 +1,9 @@
 package clip
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -50,10 +52,14 @@ func (h *ClipHandler) SubmitClip(c *gin.Context) {
 	}
 
 	jobID := uuid.New().String()
-	h.store.CreateJob(jobID)
+	
+	// Buat context dengan timeout 10 menit untuk proses keseluruhan
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	
+	h.store.CreateJob(jobID, cancel)
 
-	// Mulai pemrosesan di background
-	go h.service.ProcessClip(jobID, req.YoutubeURL, req.LayoutMode)
+	// Mulai pemrosesan di background dengan context
+	go h.service.ProcessClip(ctx, cancel, jobID, req.YoutubeURL, req.LayoutMode)
 
 	c.JSON(http.StatusAccepted, ClipResponse{
 		JobID: jobID,
@@ -71,4 +77,17 @@ func (h *ClipHandler) GetClipStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, job)
+}
+
+// CancelClip menangani request DELETE /api/v1/clips/:id untuk membatalkan proses
+func (h *ClipHandler) CancelClip(c *gin.Context) {
+	id := c.Param("id")
+
+	if _, exists := h.store.GetJob(id); !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return
+	}
+
+	h.store.CancelJob(id)
+	c.JSON(http.StatusOK, gin.H{"message": "Job cancellation requested successfully"})
 }

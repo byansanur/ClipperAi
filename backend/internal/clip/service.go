@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/sgo-byan/clipperai/internal/pkg/ffmpeg"
 	"github.com/sgo-byan/clipperai/internal/pkg/ollama"
@@ -49,7 +48,9 @@ func NewClipService(store *JobStore, ollamaClient *ollama.Client, outputDir stri
 
 // ProcessClip adalah fungsi utama untuk memproses video YouTube menjadi clip.
 // Dijalankan di goroutine secara asynchronous.
-func (s *ClipService) ProcessClip(jobID string, youtubeURL string, layoutMode string) {
+func (s *ClipService) ProcessClip(ctx context.Context, cancel context.CancelFunc, jobID string, youtubeURL string, layoutMode string) {
+	defer cancel() // Bebaskan resource context saat goroutine selesai
+
 	// Wajib defer recover untuk mencegah server crash akibat panic.
 	defer func() {
 		if r := recover(); r != nil {
@@ -57,9 +58,6 @@ func (s *ClipService) ProcessClip(jobID string, youtubeURL string, layoutMode st
 			s.store.FailJob(jobID, "Internal server error during processing")
 		}
 	}()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
 
 	log.Printf("[SERVICE] Starting job %s for URL %s", jobID, youtubeURL)
 

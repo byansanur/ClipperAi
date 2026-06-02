@@ -1,6 +1,7 @@
 package clip
 
 import (
+	"context"
 	"sync"
 )
 
@@ -15,10 +16,11 @@ const (
 
 // Job menyimpan state untuk satu job.
 type Job struct {
-	ID        string    `json:"id"`
-	Status    JobStatus `json:"status"`
-	VideoPath string    `json:"video_path,omitempty"`
-	Error     string    `json:"error,omitempty"`
+	ID        string             `json:"id"`
+	Status    JobStatus          `json:"status"`
+	VideoPath string             `json:"video_path,omitempty"`
+	Error     string             `json:"error,omitempty"`
+	Cancel    context.CancelFunc `json:"-"`
 }
 
 // JobStore mengelola state pekerjaan secara aman untuk concurrent access.
@@ -35,12 +37,13 @@ func NewJobStore() *JobStore {
 }
 
 // CreateJob mendaftarkan job baru ke dalam store dengan status "processing".
-func (s *JobStore) CreateJob(id string) {
+func (s *JobStore) CreateJob(id string, cancel context.CancelFunc) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.jobs[id] = &Job{
 		ID:     id,
 		Status: StatusProcessing,
+		Cancel: cancel,
 	}
 }
 
@@ -78,5 +81,21 @@ func (s *JobStore) FailJob(id string, errMsg string) {
 	if job, exists := s.jobs[id]; exists {
 		job.Status = StatusFailed
 		job.Error = errMsg
+	}
+}
+
+// CancelJob triggers the context cancellation and marks the job as failed if it's still processing.
+func (s *JobStore) CancelJob(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if job, exists := s.jobs[id]; exists {
+		if job.Cancel != nil {
+			job.Cancel()
+		}
+		if job.Status == StatusProcessing {
+			job.Status = StatusFailed
+			job.Error = "Proses dibatalkan oleh pengguna"
+		}
 	}
 }
