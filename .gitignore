@@ -2,9 +2,9 @@
 # Aplikasi ClipperAi
 # =========================
 # Abaikan semua file di dalam folder outputs/
-outputs/*
+backend/outputs/*
 # TETAPI tetap track file .gitkeep agar foldernya tidak hilang
-!outputs/.gitkeep
+!backend/outputs/.gitkeep
 
 # Abaikan file environment variable (SANGAT KRITIS)
 .env

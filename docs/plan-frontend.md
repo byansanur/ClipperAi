@@ -479,6 +479,32 @@ class _HomePageState extends State<HomePage> {
                               ),
                               const SizedBox(height: 24),
                               
+                              // Pilihan Layout
+                              const Text('Pilih Tipe Video:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 12.0,
+                                runSpacing: 8.0,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  ChoiceChip(
+                                    label: const Text('Solo (Vlog)'),
+                                    selected: provider.selectedLayout == 'solo',
+                                    onSelected: (selected) {
+                                      if (selected) provider.setLayout('solo');
+                                    },
+                                    selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                                    side: BorderSide(
+                                      color: provider.selectedLayout == 'solo' 
+                                          ? Theme.of(context).primaryColor 
+                                          : Colors.grey.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  // (Tambahkan chip untuk 'presentation' dan 'podcast' di sini)
+                                ],
+                              ),
+                              const SizedBox(height: 24),
+                              
                               // Error Banner
                               if (provider.state == UIState.error) ...[
                                 Container(

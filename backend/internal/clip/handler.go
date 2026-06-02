@@ -10,6 +10,7 @@ import (
 // ClipRequest mendefinisikan payload untuk submit video.
 type ClipRequest struct {
 	YoutubeURL string `json:"youtube_url"`
+	LayoutMode string `json:"layout_mode"` // default ke "solo" jika kosong
 }
 
 // ClipResponse mendefinisikan response ketika submit berhasil.
@@ -44,11 +45,15 @@ func (h *ClipHandler) SubmitClip(c *gin.Context) {
 		return
 	}
 
+	if req.LayoutMode == "" {
+		req.LayoutMode = "solo"
+	}
+
 	jobID := uuid.New().String()
 	h.store.CreateJob(jobID)
 
 	// Mulai pemrosesan di background
-	go h.service.ProcessClip(jobID, req.YoutubeURL)
+	go h.service.ProcessClip(jobID, req.YoutubeURL, req.LayoutMode)
 
 	c.JSON(http.StatusAccepted, ClipResponse{
 		JobID: jobID,

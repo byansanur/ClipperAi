@@ -44,8 +44,8 @@ func DownloadVideo(ctx context.Context, youtubeURL string, outputPath string) er
 }
 
 // SliceAndCrop memotong video dan mengubah aspect ratio menjadi 9:16.
-func SliceAndCrop(ctx context.Context, inputPath string, outputPath string, startTime string, endTime string) error {
-	log.Printf("[FFMPEG] Slicing video from %s to %s for %s", startTime, endTime, inputPath)
+func SliceAndCrop(ctx context.Context, inputPath string, outputPath string, startTime string, endTime string, layoutMode string) error {
+	log.Printf("[FFMPEG] Slicing video from %s to %s for %s with layout %s", startTime, endTime, inputPath, layoutMode)
 
 	// Verifikasi input file ada dan berukuran wajar sebelum memulai ffmpeg
 	info, err := os.Stat(inputPath)
@@ -54,19 +54,49 @@ func SliceAndCrop(ctx context.Context, inputPath string, outputPath string, star
 	}
 	log.Printf("[FFMPEG] Input file size: %d bytes", info.Size())
 
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-i", inputPath,
-		"-ss", startTime,
-		"-to", endTime,
-		"-vf", "crop=floor(ih*9/16/2)*2:floor(ih/2)*2",
-		"-c:v", "libx264",
-		"-preset", "fast",
-		"-pix_fmt", "yuv420p",
-		"-c:a", "aac",
-		"-movflags", "+faststart", // Wajib agar mp4 bisa di-stream/play langsung
-		"-y",
-		outputPath,
-	)
+	var args []string
+	switch layoutMode {
+	case "presentation":
+		args = []string{
+			"-ss", startTime,
+			"-to", endTime,
+			"-i", inputPath,
+			"-filter_complex", "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=270:480,boxblur=10:10,scale=1080:1920[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p",
+			"-c:v", "libx264",
+			"-preset", "fast",
+			"-c:a", "aac",
+			"-movflags", "+faststart",
+			"-y", outputPath,
+		}
+	case "podcast":
+		args = []string{
+			"-ss", startTime,
+			"-to", endTime,
+			"-i", inputPath,
+			"-filter_complex", "[0:v]crop=iw/2:ih:0:0[left]; [0:v]crop=iw/2:ih:iw/2:0[right]; [left][right]vstack[stacked]; [stacked]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+			"-c:v", "libx264",
+			"-preset", "fast",
+			"-c:a", "aac",
+			"-movflags", "+faststart",
+			"-y", outputPath,
+		}
+	default:
+		// solo
+		args = []string{
+			"-ss", startTime,
+			"-to", endTime,
+			"-i", inputPath,
+			"-vf", "crop=ih*9/16:ih",
+			"-c:v", "libx264",
+			"-preset", "fast",
+			"-pix_fmt", "yuv420p",
+			"-c:a", "aac",
+			"-movflags", "+faststart",
+			"-y", outputPath,
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

@@ -91,13 +91,15 @@ POST /api/v1/clips
 **Request Body:**
 ```json
 {
-  "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID"
+  "youtube_url": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "layout_mode": "solo"
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `youtube_url` | string | ✅ | URL video YouTube yang valid |
+| `layout_mode` | string | ❌ | Mode tata letak video: `solo`, `presentation`, atau `podcast`. (Default: `solo`) |
 
 **Response: `202 Accepted`**
 ```json
@@ -117,7 +119,7 @@ POST /api/v1/clips
 ```bash
 curl -X POST http://localhost:8080/api/v1/clips \
   -H "Content-Type: application/json" \
-  -d '{"youtube_url": "https://www.youtube.com/watch?v=PLzyNrAISx8"}'
+  -d '{"youtube_url": "https://www.youtube.com/watch?v=PLzyNrAISx8", "layout_mode": "presentation"}'
 ```
 
 ---
@@ -309,7 +311,7 @@ Berkomunikasi dengan Ollama API lokal untuk analisis timestamp.
 
 | Flag | Purpose |
 |------|---------|
-| `-vf crop=floor(ih*9/16/2)*2:floor(ih/2)*2` | Crop ke 9:16 dengan dimensi genap |
+| `-vf crop...` / `-filter_complex ...` | Konversi dimensi dan efek layout sesuai `layout_mode` |
 | `-c:v libx264` | Video codec H.264 |
 | `-preset fast` | Encoding speed |
 | `-pix_fmt yuv420p` | Kompatibilitas QuickTime Player |

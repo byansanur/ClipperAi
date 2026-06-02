@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 )
 
@@ -57,6 +58,9 @@ func NewClient(baseURL string, model string) *Client {
 
 // normalizeTimestamp memastikan timestamp memiliki format HH:MM:SS.
 func normalizeTimestamp(ts string) (string, error) {
+	// Hapus karakter kurung siku atau kutip jika LLM tak sengaja menyertakannya
+	ts = strings.Trim(ts, "[]\"' ")
+
 	if regexp.MustCompile(`^\d{2}:\d{2}:\d{2}$`).MatchString(ts) {
 		return ts, nil
 	}
@@ -70,7 +74,7 @@ func normalizeTimestamp(ts string) (string, error) {
 func (c *Client) FindTimestamps(ctx context.Context, transcriptChunk string) (*ClipTimestamp, error) {
 	log.Println("[OLLAMA] Calling local LLM to find best timestamps")
 
-	prompt := fmt.Sprintf(`You are a video editor assistant. The transcript below contains time markers in [HH:MM:SS] format. Use ONLY these time markers to find the most engaging 30-60 second portion for a short-form vertical video clip.
+	prompt := fmt.Sprintf(`You are a video editor assistant. The transcript below contains time markers in [HH:MM:SS] format. Use ONLY these time markers to find the most engaging 60-120 second portion for a short-form vertical video clip.
 
 TRANSCRIPT:
 %s
@@ -78,7 +82,7 @@ TRANSCRIPT:
 Rules:
 1. Your start_time and end_time MUST come from the [HH:MM:SS] markers in the transcript above.
 2. Do NOT invent timestamps. Only use timestamps that appear in the transcript.
-3. The clip duration must be between 30 and 60 seconds.
+3. The clip duration must be between 60 and 120 seconds.
 
 Respond with ONLY valid JSON, no other text:
 {"start_time": "HH:MM:SS", "end_time": "HH:MM:SS", "reasoning": "..."}`, transcriptChunk)

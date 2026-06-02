@@ -49,7 +49,7 @@ func NewClipService(store *JobStore, ollamaClient *ollama.Client, outputDir stri
 
 // ProcessClip adalah fungsi utama untuk memproses video YouTube menjadi clip.
 // Dijalankan di goroutine secara asynchronous.
-func (s *ClipService) ProcessClip(jobID string, youtubeURL string) {
+func (s *ClipService) ProcessClip(jobID string, youtubeURL string, layoutMode string) {
 	// Wajib defer recover untuk mencegah server crash akibat panic.
 	defer func() {
 		if r := recover(); r != nil {
@@ -125,7 +125,7 @@ func (s *ClipService) ProcessClip(jobID string, youtubeURL string) {
 
 	// Step 8: Slice & crop video menjadi 9:16 vertikal
 	outputPath := filepath.Join(s.outputDir, fmt.Sprintf("output_clip_%s.mp4", jobID))
-	if err := ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeFfmpegStart, safeFfmpegEnd); err != nil {
+	if err := ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeFfmpegStart, safeFfmpegEnd, layoutMode); err != nil {
 		s.store.FailJob(jobID, fmt.Errorf("failed to slice and crop video: %w", err).Error())
 		return
 	}
