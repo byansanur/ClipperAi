@@ -10,21 +10,24 @@ import (
 	"github.com/sgo-byan/clipperai/internal/pkg/ollama"
 )
 
-func getEnvOrDefault(key, fallback string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
+func getRequiredEnv(key string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		log.Fatalf("[MAIN] Environment variable %s is required but not set in .env", key)
 	}
-	return fallback
+	return value
 }
 
 func main() {
-	// Coba load .env file (abaikan error jika file tidak ada)
-	_ = godotenv.Load()
+	// Wajib me-load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Fatalf("[MAIN] Error loading .env file: %v", err)
+	}
 
-	port := getEnvOrDefault("PORT", "8080")
-	ollamaURL := getEnvOrDefault("OLLAMA_URL", "http://localhost:11434")
-	ollamaModel := getEnvOrDefault("OLLAMA_MODEL", "llama3.2")
-	outputDir := getEnvOrDefault("OUTPUT_DIR", "outputs")
+	port := getRequiredEnv("PORT")
+	ollamaURL := getRequiredEnv("OLLAMA_URL")
+	ollamaModel := getRequiredEnv("OLLAMA_MODEL")
+	outputDir := getRequiredEnv("OUTPUT_DIR")
 
 	// Create output dir if it doesn't exist
 	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
