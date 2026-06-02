@@ -14,9 +14,10 @@ Backend ClipperAi saat ini sudah sepenuhnya operasional untuk menerima URL YouTu
 
 ## ✨ Fitur Utama yang Berhasil Diimplementasikan
 
-1. **Asynchronous API (Polling)**
+1. **Asynchronous API (Polling & Cancellation)**
    - `POST /api/v1/clips`: Menerima URL video, melakukan generate Job ID (UUID), dan langsung mengembalikan HTTP 202 Accepted.
-   - `GET /api/v1/clips/:id`: API untuk klien mengecek status job (`processing`, `completed`, `failed`).
+   - `GET /api/v1/clips/:id`: API untuk mengecek status job (`processing`, `completed`, `failed`).
+   - `DELETE /api/v1/clips/:id`: API untuk membatalkan proses latar belakang secara paksa (*Cancel Job*).
 
 2. **Smart Pipeline Processing**
    - **Download Transcript**: Mengambil subtitle otomatis langsung dari YouTube.
@@ -42,6 +43,10 @@ Selama fase MVP, beberapa *edge cases* dan *bug* berhasil diatasi agar sistem me
 
 4. **Konfigurasi Fleksibel**
    - Menghapus konfigurasi yang sepenuhnya di-hardcode ke sistem berbasis `godotenv` (`.env` file) agar pengguna mudah mengubah `PORT`, `OLLAMA_MODEL`, dan direktori output tanpa harus *recompile* kode.
+
+5. **Resource Leak Prevention (Context Cancellation)**
+   - *Masalah*: Jika pengguna menekan tombol Batal di Frontend, backend tetap memproses FFmpeg dan menghabiskan CPU secara percuma.
+   - *Solusi*: Menggunakan injeksi `context.Context` dengan `CancelFunc` ke dalam `exec.CommandContext` sehingga ketika API `DELETE` dipanggil, yt-dlp dan FFmpeg otomatis dibunuh (*SIGKILL*) secara terprogram.
 
 ## 📌 Status Saat Ini & Langkah Selanjutnya
 - **Fase Backend**: **SELESAI ✅**

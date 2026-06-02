@@ -15,6 +15,7 @@
 - [API Endpoints](#api-endpoints)
   - [Submit Clip Job](#1-submit-clip-job)
   - [Get Job Status](#2-get-job-status)
+  - [Cancel Clip Job](#3-cancel-clip-job)
 - [Processing Pipeline](#processing-pipeline)
 - [Architecture](#architecture)
   - [Directory Structure](#directory-structure)
@@ -163,7 +164,7 @@ Status job berubah melalui 3 state berikut:
 {
   "id": "5656dfc2-6938-4e79-acd1-4cddbb633426",
   "status": "failed",
-  "error": "failed to fetch transcript: ..."
+  "error": "failed to fetch transcript: ... (atau 'Proses dibatalkan oleh pengguna')"
 }
 ```
 
@@ -185,6 +186,38 @@ Status job berubah melalui 3 state berikut:
 **Contoh cURL:**
 ```bash
 curl -i http://localhost:8080/api/v1/clips/5656dfc2-6938-4e79-acd1-4cddbb633426
+```
+
+---
+
+### 3. Cancel Clip Job
+
+Membatalkan pemrosesan clip yang sedang berjalan di background secara real-time. Ini memanggil `context.CancelFunc` untuk membunuh proses eksternal seperti FFmpeg atau yt-dlp secara instan, sehingga membebaskan CPU.
+
+```
+DELETE /api/v1/clips/:id
+```
+
+**Path Parameters:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string (UUID) | Job ID yang ingin dibatalkan |
+
+**Response: `200 OK`**
+```json
+{
+  "message": "Job cancellation requested successfully"
+}
+```
+
+**Error Responses:**
+| Status | Body | Kondisi |
+|--------|------|---------|
+| `404 Not Found` | `{"error": "Job not found"}` | Job ID tidak ditemukan |
+
+**Contoh cURL:**
+```bash
+curl -X DELETE http://localhost:8080/api/v1/clips/5656dfc2-6938-4e79-acd1-4cddbb633426
 ```
 
 ---
@@ -264,10 +297,11 @@ Menyimpan state job secara thread-safe menggunakan `sync.RWMutex`.
 | Method | Lock Type | Description |
 |--------|-----------|-------------|
 | `NewJobStore()` | - | Constructor |
-| `CreateJob(id)` | Write | Buat job baru (status: processing) |
+| `CreateJob(id, cancel)` | Write | Buat job baru dengan `context.CancelFunc` |
 | `GetJob(id)` | Read | Ambil copy dari job (mencegah race condition) |
 | `CompleteJob(id, path)` | Write | Update status ke completed |
 | `FailJob(id, err)` | Write | Update status ke failed |
+| `CancelJob(id)` | Write | Eksekusi `CancelFunc` dan set status ke failed |
 
 > **Penting**: `GetJob` mengembalikan *copy* dari struct Job, bukan pointer ke data internal map, untuk mencegah race condition.
 
