@@ -20,6 +20,7 @@ backend/outputs/*
 *.dylib
 bin/
 clipperai # Jika build output bernama clipperai
+backend/main
 
 # Test binary & coverage
 *.test
