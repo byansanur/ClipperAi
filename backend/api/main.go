@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/sgo-byan/clipperai/internal/clip"
@@ -40,6 +41,16 @@ func main() {
 	handler := clip.NewClipHandler(store, service)
 
 	r := gin.Default()
+
+	// CORS Middleware untuk mempermudah akses Frontend lokal
+	r.Use(cors.New(cors.Config{
+		AllowAllOrigins: true,
+		AllowMethods:    []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:    []string{"Origin", "Content-Type", "Accept"},
+	}))
+
+	// Serve folder output sebagai static files
+	r.Static("/outputs", outputDir)
 
 	v1 := r.Group("/api/v1")
 	{

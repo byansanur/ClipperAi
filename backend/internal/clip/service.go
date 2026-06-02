@@ -130,9 +130,10 @@ func (s *ClipService) ProcessClip(jobID string, youtubeURL string) {
 		return
 	}
 
-	// Step 9: Update state menjadi completed
+	// Step 9: Update state menjadi completed dengan URL relative
 	log.Printf("[SERVICE] Job %s completed successfully", jobID)
-	s.store.CompleteJob(jobID, outputPath)
+	relativeURL := fmt.Sprintf("/outputs/output_clip_%s.mp4", jobID)
+	s.store.CompleteJob(jobID, relativeURL)
 }
 
 // chunkTranscript memecah teks berdasarkan jumlah menit estimasi (1 menit = ~150 kata).
