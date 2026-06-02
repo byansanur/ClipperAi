@@ -114,8 +114,12 @@ ClipperAi/
 ## 📜 Dokumentasi Lebih Lanjut
 
 - [Backend API Documentation](docs/backend-api.md)
+- [Backend Summary](docs/backend-summarize.md)
+- [Frontend Summary](docs/frontend-summarize.md)
 - [Frontend Implementation Plan](docs/plan-frontend.md)
+- [Backend Implementation Plan](docs/plan.md)
 - [Code Convention](docs/code-convention.md)
+- [Project Context](docs/context.md)
 
 ---
 
