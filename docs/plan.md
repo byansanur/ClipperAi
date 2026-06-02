@@ -1,12 +1,12 @@
 # Local AI Clipper — Implementation Plan (Step-by-Step)
 
-> **Tujuan dokumen ini**: Memberikan instruksi yang presisi dan terstruktur agar agent coding (model murah) dapat mengeksekusi setiap fase **tanpa ambiguitas**. Setiap fase harus diselesaikan secara berurutan. Jangan lompat ke fase berikutnya sebelum fase sebelumnya selesai dan diverifikasi.
+> **Purpose of this document**: Provide precise, structured instructions for AI coding agents to execute each phase **without ambiguity**. Every phase must be completed sequentially. Do not jump to the next phase before the previous one is fully completed and verified.
 
-> **PENTING:** Sebelum mengeksekusi fase apa pun di bawah ini, agen **WAJIB** membaca dan mematuhi seluruh aturan penulisan kode yang ada di file `/docs/code-convention.md`.
+> **IMPORTANT:** Before executing any phase below, the agent **MUST** read and adhere to all coding conventions found in the `/docs/code-convention.md` file.
 
 ---
 
-## Referensi Arsitektur
+## Architecture Reference
 
 ```
 ClipperAi/
@@ -15,51 +15,51 @@ ClipperAi/
 │   │   └── main.go                  # Entry point, Gin router setup
 │   ├── internal/
 │   │   ├── clip/
-│   │   │   ├── handler.go           # HTTP handler (POST /api/v1/clips, GET /api/v1/clips/:id)
+│   │   │   ├── handler.go           # HTTP handler (POST /api/v1/clips, GET /api/v1/clips/:id, DELETE /api/v1/clips/:id)
 │   │   │   ├── service.go           # Orchestration: chunking, scoring, LLM call, media slicing
 │   │   │   └── state.go             # Thread-safe in-memory job state manager
 │   │   └── pkg/
 │   │       ├── ollama/
-│   │       │   └── client.go        # HTTP client wrapper untuk Ollama API
+│   │       │   └── client.go        # HTTP client wrapper for Ollama API
 │   │       └── ffmpeg/
-│   │           └── executor.go      # os/exec wrapper untuk yt-dlp dan ffmpeg
-│   ├── outputs/                     # Folder output video clips
+│   │           └── executor.go      # os/exec wrapper for yt-dlp and ffmpeg
+│   ├── outputs/                     # Output folder for video clips
 │   ├── go.mod
 │   └── go.sum
 ├── docs/
-│   ├── context.md               # Project context (sudah ada)
-│   └── plan.md                  # File ini
+│   ├── context.md               # Project context
+│   └── plan.md                  # This file
 └── frontend/
 ```
 
 ---
 
-## FASE 0: Project Initialization
+## PHASE 0: Project Initialization
 
-### Tugas:
-1. Jalankan `go mod init github.com/sgo-byan/clipperai` di root project `/Users/sgo-byan/project/ClipperAi`.
-2. Buat seluruh folder structure sesuai referensi arsitektur di atas. Buat folder: `api/`, `internal/clip/`, `internal/pkg/ollama/`, `internal/pkg/ffmpeg/`, `outputs/`.
-3. Tambahkan file `.gitkeep` di dalam folder `outputs/` agar folder ter-track oleh git.
-4. Install dependency Gin: jalankan `go get github.com/gin-gonic/gin`.
-5. Install dependency UUID: jalankan `go get github.com/google/uuid`.
+### Tasks:
+1. Run `go mod init github.com/sgo-byan/clipperai` in the project root `/Users/sgo-byan/project/ClipperAi`.
+2. Create the directory structure based on the reference above: `api/`, `internal/clip/`, `internal/pkg/ollama/`, `internal/pkg/ffmpeg/`, `outputs/`.
+3. Add a `.gitkeep` file inside the `outputs/` folder so it gets tracked by Git.
+4. Install Gin: `go get github.com/gin-gonic/gin`.
+5. Install UUID library: `go get github.com/google/uuid`.
 
-### Verifikasi:
-- `go mod tidy` berjalan tanpa error.
-- Semua folder sudah terbuat.
+### Verification:
+- `go mod tidy` runs without errors.
+- All folders are created successfully.
 
 ---
 
-## FASE 1: State Manager (`internal/clip/state.go`)
+## PHASE 1: State Manager (`internal/clip/state.go`)
 
-### Deskripsi:
-Buat thread-safe in-memory job state manager menggunakan `sync.RWMutex`.
+### Description:
+Create a thread-safe, in-memory job state manager using `sync.RWMutex`.
 
-### Spesifikasi:
+### Specifications:
 
 ```go
 package clip
 
-// JobStatus mewakili status sebuah job.
+// JobStatus represents the status of a job.
 type JobStatus string
 
 const (
@@ -68,7 +68,7 @@ const (
     StatusFailed     JobStatus = "failed"
 )
 
-// Job menyimpan state untuk satu job.
+// Job stores the state of a single job.
 type Job struct {
     ID        string    `json:"id"`
     Status    JobStatus `json:"status"`
@@ -77,70 +77,70 @@ type Job struct {
 }
 ```
 
-### Fungsi yang harus dibuat:
+### Required Functions:
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `NewJobStore` | `func NewJobStore() *JobStore` | Constructor, return pointer ke JobStore yang berisi `map[string]*Job` dan `sync.RWMutex`. |
-| `CreateJob` | `func (s *JobStore) CreateJob(id string)` | Buat job baru dengan status `processing`. Gunakan **write lock**. |
-| `GetJob` | `func (s *JobStore) GetJob(id string) (*Job, bool)` | Ambil job by ID. Gunakan **read lock**. Return copy dari Job, bukan pointer langsung ke map. |
-| `CompleteJob` | `func (s *JobStore) CompleteJob(id string, videoPath string)` | Update status ke `completed` dan set `video_path`. Gunakan **write lock**. |
-| `FailJob` | `func (s *JobStore) FailJob(id string, errMsg string)` | Update status ke `failed` dan set `error`. Gunakan **write lock**. |
+| `NewJobStore` | `func NewJobStore() *JobStore` | Constructor, returns a pointer to `JobStore` containing a `map[string]*Job` and a `sync.RWMutex`. |
+| `CreateJob` | `func (s *JobStore) CreateJob(id string)` | Creates a new job with the `processing` status. Uses a **write lock**. |
+| `GetJob` | `func (s *JobStore) GetJob(id string) (*Job, bool)` | Retrieves a job by its ID. Uses a **read lock**. Returns a copy of the `Job`, not a direct pointer to the map data. |
+| `CompleteJob` | `func (s *JobStore) CompleteJob(id string, videoPath string)` | Updates the job's status to `completed` and sets the `video_path`. Uses a **write lock**. |
+| `FailJob` | `func (s *JobStore) FailJob(id string, errMsg string)` | Updates the job's status to `failed` and sets the `error`. Uses a **write lock**. |
 
-### Aturan Penting:
-- **JANGAN** gunakan `sync.Map`. Gunakan `sync.RWMutex` + regular `map[string]*Job`.
-- `GetJob` harus return **copy** dari struct, bukan pointer ke data di dalam map, untuk mencegah race condition.
+### Important Rules:
+- **DO NOT** use `sync.Map`. Use a standard `map[string]*Job` protected by `sync.RWMutex`.
+- `GetJob` must return a **copy** of the struct, not a pointer to the internal map data, to prevent race conditions.
 
-### Verifikasi:
-- Code compiles tanpa error: `go build ./internal/clip/`
+### Verification:
+- Code compiles without errors: `go build ./internal/clip/`
 
 ---
 
-## FASE 2: HTTP Handler (`internal/clip/handler.go`)
+## PHASE 2: HTTP Handler (`internal/clip/handler.go`)
 
-### Deskripsi:
-Buat Gin HTTP handler untuk dua endpoint.
+### Description:
+Create Gin HTTP handlers for the endpoints.
 
 ### Endpoint 1: `POST /api/v1/clips`
 
 - **Request Body**: `{"youtube_url": "https://youtube.com/watch?v=..."}`
 - **Logic**:
-  1. Bind JSON body. Jika `youtube_url` kosong, return `400 Bad Request`.
-  2. Generate UUID menggunakan `github.com/google/uuid`.
-  3. Panggil `JobStore.CreateJob(uuid)`.
-  4. Jalankan `go service.ProcessClip(jobID, youtubeURL)` sebagai goroutine (untuk saat ini, buat fungsi placeholder kosong di service.go).
-  5. Return `202 Accepted` dengan body: `{"job_id": "<uuid>"}`.
+  1. Bind the JSON body. If `youtube_url` is empty, return `400 Bad Request`.
+  2. Generate a UUID using `github.com/google/uuid`.
+  3. Call `JobStore.CreateJob(uuid)`.
+  4. Run `go service.ProcessClip(jobID, youtubeURL)` as a goroutine (for now, create an empty placeholder function in `service.go`).
+  5. Return `202 Accepted` with the body: `{"job_id": "<uuid>"}`.
 
 ### Endpoint 2: `GET /api/v1/clips/:id`
 
 - **Logic**:
-  1. Ambil `id` dari URL parameter.
-  2. Panggil `JobStore.GetJob(id)`.
-  3. Jika job tidak ditemukan, return `404 Not Found`.
-  4. Return `200 OK` dengan body Job struct sebagai JSON.
+  1. Extract `id` from the URL parameters.
+  2. Call `JobStore.GetJob(id)`.
+  3. If the job is not found, return `404 Not Found`.
+  4. Return `200 OK` with the `Job` struct as the JSON body.
 
-### Struct Handler:
+### Handler Struct:
 
 ```go
 type ClipHandler struct {
     store   *JobStore
-    service *ClipService // akan diisi di fase berikutnya
+    service *ClipService // to be populated in the next phase
 }
 
 func NewClipHandler(store *JobStore, service *ClipService) *ClipHandler
 ```
 
-### Verifikasi:
-- Code compiles tanpa error: `go build ./internal/clip/`
+### Verification:
+- Code compiles without errors: `go build ./internal/clip/`
 
 ---
 
-## FASE 3: Gin Router & Entry Point (`api/main.go`)
+## PHASE 3: Gin Router & Entry Point (`api/main.go`)
 
-### Deskripsi:
-Setup Gin router dan wiring semua dependency.
+### Description:
+Set up the Gin router and wire all dependencies.
 
-### Spesifikasi:
+### Specifications:
 
 ```go
 package main
@@ -153,7 +153,7 @@ import (
 
 func main() {
     store := clip.NewJobStore()
-    service := clip.NewClipService(store) // placeholder untuk sekarang
+    service := clip.NewClipService(store) // placeholder for now
     handler := clip.NewClipHandler(store, service)
 
     r := gin.Default()
@@ -169,61 +169,61 @@ func main() {
 }
 ```
 
-### Verifikasi:
-- `go build ./api/` compiles tanpa error.
-- `go run ./api/main.go` server jalan dan endpoint merespons (bisa test dengan curl).
-- Test command:
+### Verification:
+- `go build ./api/` compiles without errors.
+- `go run ./api/main.go` starts the server and endpoints respond correctly.
+- Test commands:
   ```bash
-  # Terminal 1: jalankan server
+  # Terminal 1: run server
   go run ./api/main.go
 
   # Terminal 2: test POST
   curl -X POST http://localhost:8080/api/v1/clips -H "Content-Type: application/json" -d '{"youtube_url": "https://youtube.com/watch?v=test"}'
 
-  # Terminal 2: test GET (gunakan job_id dari response POST)
+  # Terminal 2: test GET (use the job_id from the POST response)
   curl http://localhost:8080/api/v1/clips/<job_id>
   ```
 
 ---
 
-## FASE 4: FFmpeg & yt-dlp Executor (`internal/pkg/ffmpeg/executor.go`)
+## PHASE 4: FFmpeg & yt-dlp Executor (`internal/pkg/ffmpeg/executor.go`)
 
-### Deskripsi:
-Buat wrapper untuk menjalankan `yt-dlp` dan `ffmpeg` via `os/exec`.
+### Description:
+Create a wrapper to execute `yt-dlp` and `ffmpeg` via `os/exec`.
 
-### Fungsi yang harus dibuat:
+### Required Functions:
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `DownloadVideo` | `func DownloadVideo(ctx context.Context, youtubeURL string, outputPath string) error` | Jalankan `yt-dlp` untuk download video. Gunakan `exec.CommandContext` agar bisa di-cancel via context. |
-| `SliceAndCrop` | `func SliceAndCrop(ctx context.Context, inputPath string, outputPath string, startTime string, endTime string) error` | Jalankan `ffmpeg` untuk cut video dari `startTime` ke `endTime` dan apply crop filter 9:16. |
+| `DownloadVideo` | `func DownloadVideo(ctx context.Context, youtubeURL string, outputPath string) error` | Runs `yt-dlp` to download the video. Use `exec.CommandContext` to support cancellation via context. |
+| `SliceAndCrop` | `func SliceAndCrop(ctx context.Context, inputPath string, outputPath string, startTime string, endTime string) error` | Runs `ffmpeg` to trim the video from `startTime` to `endTime` and apply a 9:16 crop filter. |
 
-### Detail Implementasi `DownloadVideo`:
+### `DownloadVideo` Implementation Detail:
 ```bash
 yt-dlp -f "bestvideo[height<=1080]+bestaudio/best[height<=1080]" --merge-output-format mp4 -o <outputPath> <youtubeURL>
 ```
 
-### Detail Implementasi `SliceAndCrop`:
+### `SliceAndCrop` Implementation Detail:
 ```bash
 ffmpeg -i <inputPath> -ss <startTime> -to <endTime> -vf "crop=ih*9/16:ih" -c:v libx264 -c:a aac -y <outputPath>
 ```
 
-### Aturan Penting:
-- Selalu gunakan `exec.CommandContext(ctx, ...)` supaya bisa timeout.
-- Capture `stderr` dari command untuk error reporting: gunakan `cmd.CombinedOutput()`.
-- Jika command return non-zero exit code, return error yang mengandung stderr output.
+### Important Rules:
+- Always use `exec.CommandContext(ctx, ...)` to ensure commands can be canceled or timed out.
+- Capture the command's `stderr` for error reporting using `cmd.CombinedOutput()`.
+- If the command returns a non-zero exit code, return an error that includes the `stderr` output.
 
-### Verifikasi:
+### Verification:
 - Code compiles: `go build ./internal/pkg/ffmpeg/`
 
 ---
 
-## FASE 5: Ollama Client (`internal/pkg/ollama/client.go`)
+## PHASE 5: Ollama Client (`internal/pkg/ollama/client.go`)
 
-### Deskripsi:
-Buat HTTP client untuk berkomunikasi dengan Ollama local API.
+### Description:
+Create an HTTP client to communicate with the local Ollama API.
 
-### Spesifikasi:
+### Specifications:
 
 ```go
 package ollama
@@ -243,7 +243,7 @@ type GenerateResponse struct {
     Response string `json:"response"`
 }
 
-// Parsed result dari response LLM
+// Parsed result from the LLM response
 type ClipTimestamp struct {
     StartTime string `json:"start_time"`
     EndTime   string `json:"end_time"`
@@ -251,15 +251,15 @@ type ClipTimestamp struct {
 }
 ```
 
-### Fungsi yang harus dibuat:
+### Required Functions:
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `NewClient` | `func NewClient(baseURL string) *Client` | Constructor. Jika `baseURL` kosong, gunakan default `http://localhost:11434`. Set HTTP timeout 120 detik. |
-| `FindTimestamps` | `func (c *Client) FindTimestamps(ctx context.Context, transcriptChunk string) (*ClipTimestamp, error)` | Kirim transcript chunk ke Ollama, parse JSON response. |
+| `NewClient` | `func NewClient(baseURL string) *Client` | Constructor. If `baseURL` is empty, default to `http://localhost:11434`. Set the HTTP timeout to 120 seconds. |
+| `FindTimestamps` | `func (c *Client) FindTimestamps(ctx context.Context, transcriptChunk string) (*ClipTimestamp, error)` | Sends the transcript chunk to Ollama and parses the JSON response. |
 
-### Detail Implementasi `FindTimestamps`:
-1. Buat prompt yang strict. **PENTING: Gunakan format `HH:MM:SS`** (bukan `MM:SS`) karena FFmpeg lebih stabil menerima format ini:
+### `FindTimestamps` Implementation Detail:
+1. Create a strict prompt. **IMPORTANT: Use the `HH:MM:SS` format** (not `MM:SS`) as FFmpeg handles it more reliably:
    ```
    You are a video editor assistant. Analyze the following transcript segment and find the most engaging 30-60 second portion for a short-form vertical video clip.
 
@@ -271,161 +271,160 @@ type ClipTimestamp struct {
 
    IMPORTANT: Use HH:MM:SS format (e.g., "00:02:05"), NOT MM:SS.
    ```
-2. POST ke `<baseURL>/api/generate` dengan model `llama3.2` dan `stream: false`.
-3. Parse `GenerateResponse.Response` sebagai JSON ke `ClipTimestamp`.
-4. Jika parsing gagal, return error descriptif.
-5. **Validasi format timestamp**: Setelah parsing JSON, validasi bahwa `start_time` dan `end_time` match pattern `HH:MM:SS` menggunakan regex `^\d{2}:\d{2}:\d{2}$`. Jika LLM mengembalikan format `MM:SS`, auto-konversi ke `00:MM:SS`.
+2. Make a POST request to `<baseURL>/api/generate` with the `llama3.2` model and `stream: false`.
+3. Parse `GenerateResponse.Response` as JSON into `ClipTimestamp`.
+4. If parsing fails, return a descriptive error.
+5. **Timestamp Format Validation**: After parsing, validate that `start_time` and `end_time` match the `HH:MM:SS` pattern using the regex `^\d{2}:\d{2}:\d{2}$`. If the LLM returns `MM:SS`, automatically prepend `00:` to correct it.
 
-### Helper Function (wajib dibuat di file ini):
+### Helper Function (Must be created in this file):
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `normalizeTimestamp` | `func normalizeTimestamp(ts string) (string, error)` | Terima timestamp string, normalisasi ke format `HH:MM:SS`. Jika input `MM:SS` → prepend `00:`. Jika input `HH:MM:SS` → return as-is. Jika format tidak dikenali → return error. |
+| `normalizeTimestamp` | `func normalizeTimestamp(ts string) (string, error)` | Accepts a timestamp string and normalizes it to `HH:MM:SS`. If input is `MM:SS` → prepend `00:`. If input is `HH:MM:SS` → return as-is. Return an error if the format is unrecognized. |
 
-### Verifikasi:
+### Verification:
 - Code compiles: `go build ./internal/pkg/ollama/`
 
 ---
 
-## FASE 6: Transcript Fetcher (Tambahan di `internal/pkg/ffmpeg/executor.go`)
+## PHASE 6: Transcript Fetcher (Addition in `internal/pkg/ffmpeg/executor.go`)
 
-### Deskripsi:
-Tambahkan fungsi untuk fetch transcript YouTube.
+### Description:
+Add a function to fetch the YouTube transcript.
 
-### Fungsi:
+### Function:
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `FetchTranscript` | `func FetchTranscript(ctx context.Context, youtubeURL string) (string, error)` | Jalankan `yt-dlp --write-auto-sub --sub-lang id,en --skip-download --sub-format txt` lalu baca file subtitle yang dihasilkan. |
+| `FetchTranscript` | `func FetchTranscript(ctx context.Context, youtubeURL string) (string, error)` | Runs `yt-dlp --write-auto-sub --sub-lang id,en --skip-download --sub-format vtt`, then reads and processes the generated subtitle file. |
 
 ### Detail:
-1. Gunakan `yt-dlp` dengan flag:
+1. Run `yt-dlp` with these flags:
    ```bash
    yt-dlp --write-auto-sub --sub-lang id,en --skip-download --sub-format vtt -o "outputs/transcript_<uuid>" <youtubeURL>
    ```
-2. Baca file `.vtt` yang dihasilkan.
-3. **Parsing VTT — KRITIS**: File `.vtt` dari YouTube mengandung banyak noise. Gunakan helper function `parseVTT` dengan langkah-langkah berikut:
-   - **Hapus header**: Buang baris-baris awal yang mengandung `WEBVTT`, `Kind:`, `Language:`.
-   - **Hapus timestamp lines**: Gunakan regex `^\d{2}:\d{2}:\d{2}\.\d{3}\s*-->\s*\d{2}:\d{2}:\d{2}\.\d{3}` untuk mendeteksi dan menghapus baris timestamp.
-   - **Hapus baris angka index**: Baris yang hanya berisi angka (nomor urut cue) harus dibuang. Gunakan regex `^\d+$`.
-   - **Hapus HTML/XML tags**: Gunakan regex `<[^>]+>` untuk menghapus tag seperti `<c>`, `</c>`, `<b>`, dll.
-   - **Hapus baris kosong** dan trim whitespace.
-   - **Deduplikasi**: VTT YouTube sering mengulangi teks yang sama di cue berturut-turut. Buang baris yang identik dengan baris sebelumnya.
-   - **Gabungkan** semua baris teks yang tersisa menjadi satu string panjang, dipisahkan spasi.
-4. Return plain text transcript yang sudah bersih sebagai string.
+2. Read the resulting `.vtt` file.
+3. **VTT Parsing — CRITICAL**: YouTube's `.vtt` files contain a lot of noise. Create a `parseVTT` helper function with the following steps:
+   - **Remove headers**: Discard early lines containing `WEBVTT`, `Kind:`, `Language:`.
+   - **Keep inline timestamps**: Don't discard timestamps entirely, but format them so they are inline with the text (e.g., `[HH:MM:SS]`) to help the LLM maintain temporal awareness.
+   - **Remove cue indexes**: Lines containing only numbers should be dropped.
+   - **Remove HTML/XML tags**: Use a regex like `<[^>]+>` to strip formatting tags (`<c>`, `<b>`, etc.).
+   - **Deduplication**: YouTube's auto-generated VTT often repeats text across consecutive cues. Remove consecutive identical lines.
+   - **Combine**: Join all remaining text into a clean, readable string.
+4. Return the cleaned plain text transcript.
 
-### Helper Function (wajib dibuat):
+### Helper Function (Must be created):
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `parseVTT` | `func parseVTT(vttContent string) string` | Terima raw string isi file `.vtt`, return clean plain text transcript. Implementasi sesuai langkah di atas menggunakan `regexp` package. |
+| `parseVTT` | `func parseVTT(vttContent string) string` | Accepts raw VTT content as a string and returns a cleaned transcript. |
 
-### Verifikasi:
+### Verification:
 - Code compiles: `go build ./internal/pkg/ffmpeg/`
 
 ---
 
-## FASE 7: Service / Orchestration (`internal/clip/service.go`)
+## PHASE 7: Service / Orchestration (`internal/clip/service.go`)
 
-### Deskripsi:
-Implementasi logic utama: chunking, heuristic scoring, LLM call, dan media slicing.
+### Description:
+Implement the core logic: chunking, heuristic scoring, LLM API calls, and media slicing.
 
 ### Struct:
 
 ```go
 type ClipService struct {
-    store       *JobStore
+    store        *JobStore
     ollamaClient *ollama.Client
 }
 
 func NewClipService(store *JobStore) *ClipService
 ```
 
-### Fungsi Utama:
+### Main Function:
 
 #### `ProcessClip(jobID string, youtubeURL string)`
-Ini adalah fungsi yang dipanggil sebagai goroutine. **Semua error harus di-recover dan update state ke "failed".**
+This function is executed as a goroutine. **All errors must be recovered, and the job state updated to "failed".**
 
 **Flow:**
-1. Buat `context.WithTimeout` 10 menit.
-2. **Fetch transcript** → panggil `ffmpeg.FetchTranscript(ctx, youtubeURL)`.
-3. **Chunk transcript** → panggil `chunkTranscript(transcript, 5)` (5 menit per chunk).
-4. **Score chunks** → panggil `scoreChunks(chunks)`, sort descending, ambil Top 1.
-5. **LLM call** → panggil `ollamaClient.FindTimestamps(ctx, topChunk)`.
-6. **Konversi timestamp** → Sebelum dikirim ke FFmpeg, konversi `startTime` dan `endTime` dari LLM ke format yang aman untuk FFmpeg menggunakan `parseTimeToSeconds`. Ini menghasilkan integer detik total yang bisa di-format ulang ke `HH:MM:SS` atau langsung digunakan sebagai string detik.
-7. **Download video** → panggil `ffmpeg.DownloadVideo(ctx, youtubeURL, tempPath)`.
-8. **Slice & crop** → panggil `ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeFfmpegStart, safeFfmpegEnd)`. Parameter waktu sudah di-konversi di step 6.
+1. Create a `context.WithTimeout` of 10 minutes.
+2. **Fetch transcript** → call `ffmpeg.FetchTranscript(ctx, youtubeURL)`.
+3. **Chunk transcript** → call `chunkTranscript(transcript, 5)` (5 minutes per chunk).
+4. **Score chunks** → call `scoreChunks(chunks)`, sort them in descending order, and pick the Top 1.
+5. **LLM call** → call `ollamaClient.FindTimestamps(ctx, topChunk)`.
+6. **Convert timestamps** → Before passing times to FFmpeg, parse `startTime` and `endTime` using `parseTimeToSeconds` to calculate the exact duration and format safely.
+7. **Download video** → call `ffmpeg.DownloadVideo(ctx, youtubeURL, tempPath)`.
+8. **Slice & crop** → call `ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeStart, safeEnd)`.
 9. **Update state** → `store.CompleteJob(jobID, outputPath)`.
-10. Jika ada error di step manapun, panggil `store.FailJob(jobID, err.Error())`.
+10. If an error occurs at any step, call `store.FailJob(jobID, err.Error())`.
 
-### Helper Function (wajib dibuat di service.go):
+### Helper Functions (Must be created in `service.go`):
 
-| Fungsi | Signature | Deskripsi |
+| Function | Signature | Description |
 |--------|-----------|-----------|
-| `parseTimeToSeconds` | `func parseTimeToSeconds(timestamp string) (int, error)` | Parse timestamp string (mendukung format `HH:MM:SS`, `MM:SS`, atau detik murni) dan return total detik sebagai integer. Contoh: `"00:02:05"` → `125`, `"02:05"` → `125`, `"125"` → `125`. |
-| `secondsToFFmpegTime` | `func secondsToFFmpegTime(seconds int) string` | Konversi integer detik ke format `HH:MM:SS` yang aman untuk FFmpeg. Contoh: `125` → `"00:02:05"`. |
+| `parseTimeToSeconds` | `func parseTimeToSeconds(timestamp string) (int, error)` | Parses a timestamp string (`HH:MM:SS`, `MM:SS`, or raw seconds) into total integer seconds. |
+| `secondsToFFmpegTime` | `func secondsToFFmpegTime(seconds int) string` | Converts integer seconds back into the `HH:MM:SS` format required by FFmpeg. |
 
 #### `chunkTranscript(transcript string, minutesPerChunk int) []TranscriptChunk`
-- Split transcript berdasarkan estimasi waktu (asumsikan ~150 kata = 1 menit).
-- Setiap chunk berisi: `Text`, `StartOffset`, `EndOffset`.
+- Splits the transcript based on estimated time (assume ~150 words = 1 minute).
+- Each chunk contains: `Text`, `StartOffset`, `EndOffset`.
 
 #### `scoreChunks(chunks []TranscriptChunk) []ScoredChunk`
 - **Heuristic Scoring Rules**:
-  - Setiap `?` (tanda tanya) → +3 poin
-  - Setiap `!` (tanda seru) → +2 poin
-  - Setiap keyword emosional → +2 poin per kemunculan
+  - Every `?` (question mark) → +3 points
+  - Every `!` (exclamation mark) → +2 points
+  - Every emotional keyword → +2 points per occurrence
   - **Keywords**: `"tapi"`, `"masalahnya"`, `"gila"`, `"sebenarnya"`, `"ternyata"`, `"wow"`, `"amazing"`, `"shocking"`, `"seriously"`, `"actually"`, `"honestly"`, `"crazy"`
 - Sort descending by score.
-- Return semua chunks yang sudah di-sort (caller akan ambil Top 1).
+- Return all sorted chunks.
 
-### Verifikasi:
-- `go build ./...` compiles seluruh project tanpa error.
+### Verification:
+- `go build ./...` compiles the entire project without errors.
 
 ---
 
-## FASE 8: Integration & End-to-End Test
+## PHASE 8: Integration & End-to-End Test
 
-### Tugas:
-1. Pastikan semua wiring di `api/main.go` sudah benar (inject `ollamaClient` ke `ClipService`).
-2. Jalankan `go build ./...` — harus zero errors.
-3. Jalankan `go vet ./...` — harus zero warnings.
-4. Test manual end-to-end:
+### Tasks:
+1. Ensure all wiring in `api/main.go` is correct (e.g., injecting `ollamaClient` into `ClipService`).
+2. Run `go build ./...` — must result in zero errors.
+3. Run `go vet ./...` — must result in zero warnings.
+4. Perform a manual end-to-end test:
    ```bash
-   # Pastikan Ollama sudah jalan dengan model llama3.2
+   # Ensure Ollama is running the llama3.2 model
    ollama run llama3.2
 
-   # Jalankan server
+   # Run the server
    go run ./api/main.go
 
-   # Submit job
+   # Submit a job
    curl -X POST http://localhost:8080/api/v1/clips \
      -H "Content-Type: application/json" \
      -d '{"youtube_url": "https://www.youtube.com/watch?v=<VIDEO_ID>"}'
 
-   # Poll status (gunakan job_id dari response)
+   # Poll the status (use the job_id from the response)
    curl http://localhost:8080/api/v1/clips/<job_id>
    ```
-5. Verifikasi bahwa file output muncul di folder `outputs/`.
+5. Verify that the output video file appears in the `outputs/` folder.
 
-### Kriteria Sukses:
-- Server merespons `202 Accepted` pada POST.
-- Polling GET menunjukkan transisi: `processing` → `completed` (atau `failed` dengan error message).
-- File video `outputs/output_clip_<uuid>.mp4` terbuat dengan aspect ratio 9:16.
+### Success Criteria:
+- The server responds with `202 Accepted` on POST.
+- GET polling shows the transition: `processing` → `completed` (or `failed` with an error message).
+- The video file `outputs/output_clip_<uuid>.mp4` is successfully generated with a 9:16 aspect ratio.
 
 ---
 
-## RINGKASAN URUTAN EKSEKUSI
+## EXECUTION SEQUENCE SUMMARY
 
-| Fase | File Target | Dependency |
-|------|-------------|------------|
-| 0 | `go.mod`, folder structure | Tidak ada |
-| 1 | `internal/clip/state.go` | Fase 0 |
-| 2 | `internal/clip/handler.go` | Fase 1 |
-| 3 | `api/main.go` | Fase 1, 2 |
-| 4 | `internal/pkg/ffmpeg/executor.go` | Fase 0 |
-| 5 | `internal/pkg/ollama/client.go` | Fase 0 |
-| 6 | `internal/pkg/ffmpeg/executor.go` (tambahan) | Fase 4 |
-| 7 | `internal/clip/service.go` | Fase 1, 4, 5, 6 |
-| 8 | Integration test | Semua fase |
+| Phase | Target File | Dependencies |
+|-------|-------------|--------------|
+| 0 | `go.mod`, folder structure | None |
+| 1 | `internal/clip/state.go` | Phase 0 |
+| 2 | `internal/clip/handler.go` | Phase 1 |
+| 3 | `api/main.go` | Phase 1, 2 |
+| 4 | `internal/pkg/ffmpeg/executor.go` | Phase 0 |
+| 5 | `internal/pkg/ollama/client.go` | Phase 0 |
+| 6 | `internal/pkg/ffmpeg/executor.go` (addition) | Phase 4 |
+| 7 | `internal/clip/service.go` | Phase 1, 4, 5, 6 |
+| 8 | Integration test | All phases |
 
-> **Catatan untuk Agent**: Eksekusi fase secara berurutan (0 → 1 → 2 → ... → 8). Di setiap fase, pastikan `go build` berhasil sebelum lanjut ke fase berikutnya. Jika ada compile error, perbaiki dulu sebelum melanjutkan.
+> **Agent Note**: Execute these phases sequentially (0 → 1 → 2 → ... → 8). During each phase, ensure `go build` is successful before advancing to the next. If compile errors arise, fix them before moving forward.

@@ -1,26 +1,26 @@
 # ✂️ Local AI Clipper
 
-**Local AI Clipper** adalah platform otomasi berparadigma _local-first_ yang secara otomatis mengubah video YouTube menjadi _vertical clip_ (9:16) yang engaging, sangat cocok untuk TikTok, Shorts, dan Reels.
+**Local AI Clipper** is a local-first automation tool that converts YouTube videos into engaging vertical clips (9:16 aspect ratio), making them perfect for platforms like TikTok, Shorts, and Reels.
 
-Sistem ini memprioritaskan efisiensi memori dan privasi dengan mengeksekusi LLM serta pemrosesan media secara lokal 100%, tanpa ketergantungan pada _cloud API_ pihak ketiga.
+This system prioritizes memory efficiency and privacy by running the LLM and media processing entirely on your local machine, without relying on third-party cloud APIs.
 
 ---
 
-## ✨ Fitur Utama
+## ✨ Key Features
 
-- **Heuristic Pre-Filtering**: Secara cerdas menganalisa transkrip video YouTube untuk menemukan momen paling menarik menggunakan _density score_ (berdasarkan tanda baca dan kata emosional) sebelum melibatkan LLM, sehingga sangat menghemat waktu inferensi.
-- **Local LLM Integration**: Memanfaatkan model Llama 3.2 via Ollama untuk menentukan _timestamp_ awal dan akhir klip yang presisi secara lokal.
-- **Dynamic Video Layouting**: Memiliki 3 mode pemotongan FFmpeg yang super cepat (_Fast Seeking_):
-  - **Solo (Vlog)**: Pemotongan tengah (Center Crop) yang efisien.
-  - **Presentasi**: Efek latar belakang _blur_ ala konten edukasi/reels.
-  - **Podcast**: Layar terbagi (_Split Screen/Vertical Stack_).
-- **TikTok-Style Web Dashboard**: Antarmuka Flutter Web premium dengan _dark mode_, animasi mulus, dan _player_ video berdesain TikTok.
+- **Heuristic Pre-Filtering**: Intelligently analyzes YouTube transcripts to find the most interesting moments using a "density score" based on punctuation and emotional keywords. This drastically reduces LLM inference time by filtering out boring segments.
+- **Local LLM Integration**: Uses the Llama 3.2 model via Ollama to determine precise start and end timestamps locally.
+- **Dynamic Video Layouting**: Includes 3 fast FFmpeg cropping modes (Fast Seeking):
+  - **Solo (Vlog)**: Efficient center cropping.
+  - **Presentation**: Blurred background effect tailored for educational content.
+  - **Podcast**: Split screen / vertical stack layout.
+- **TikTok-Style Web Dashboard**: A premium Flutter Web interface with dark mode, smooth animations, and a TikTok-style video player.
 
 ---
 
 ## 📸 Screenshots
 
-_(Tambahkan tangkapan layar aplikasi Anda ke folder `assets/screenshoot/` dan tampilkan di sini)_
+*(Add your application screenshots to the `assets/screenshoot/` folder and display them here)*
 
 ![Home Page](assets/screenshoot/home_view.jpeg)
 ![Loading Page](assets/screenshoot/loading_view.jpeg)
@@ -32,9 +32,9 @@ _(Tambahkan tangkapan layar aplikasi Anda ke folder `assets/screenshoot/` dan ta
 
 ### Backend
 
-- **Bahasa**: Go (Golang 1.21+)
+- **Language**: Go (Golang 1.21+)
 - **Web Framework**: Gin HTTP
-- **Arsitektur**: Modulith / Package-by-Feature dengan _In-Memory State_ (_Thread-Safe_)
+- **Architecture**: Modulith / Package-by-Feature with Thread-Safe In-Memory State
 - **AI Engine**: Ollama (Llama 3.2)
 - **Media Toolkit**: FFmpeg (Media Processing), yt-dlp (Video/Transcript Downloader)
 
@@ -47,20 +47,20 @@ _(Tambahkan tangkapan layar aplikasi Anda ke folder `assets/screenshoot/` dan ta
 
 ---
 
-## 🚀 Cara Menjalankan Aplikasi
+## 🚀 Getting Started
 
-### Prasyarat
+### Prerequisites
 
-Pastikan Anda telah menginstal beberapa alat berikut di sistem Anda (MacOS/Linux/Windows):
+Ensure you have the following tools installed on your system (macOS/Linux/Windows):
 
-- [Go](https://go.dev/) (versi 1.21 atau terbaru)
+- [Go](https://go.dev/) (version 1.21 or newer)
 - [Flutter SDK](https://docs.flutter.dev/get-started/install)
-- [Ollama](https://ollama.com/) (Jangan lupa jalankan: `ollama pull llama3.2`)
-- `ffmpeg` dan `yt-dlp` (Tersedia via Homebrew: `brew install ffmpeg yt-dlp`)
+- [Ollama](https://ollama.com/) (Run `ollama pull llama3.2` after installing)
+- `ffmpeg` and `yt-dlp` (Available via Homebrew: `brew install ffmpeg yt-dlp`)
 
-### 1. Menjalankan Backend (Go)
+### 1. Running the Backend (Go)
 
-Buka terminal dan arahkan ke folder `backend`:
+Open a terminal and navigate to the `backend` folder:
 
 ```bash
 cd backend
@@ -68,11 +68,11 @@ go mod tidy
 go run api/main.go
 ```
 
-_Server akan berjalan di `http://localhost:8080`._
+_The server will start at `http://localhost:8080`._
 
-### 2. Menjalankan Frontend (Flutter Web)
+### 2. Running the Frontend (Flutter Web)
 
-Buka terminal baru dan arahkan ke folder `frontend`:
+Open a new terminal and navigate to the `frontend` folder:
 
 ```bash
 cd frontend
@@ -80,7 +80,7 @@ flutter pub get
 flutter run -d chrome --web-renderer html
 ```
 
-_Atau, untuk melakukan build statis web:_
+_Alternatively, to build a static web bundle:_
 
 ```bash
 flutter build web
@@ -88,30 +88,30 @@ flutter build web
 
 ---
 
-## 📂 Struktur Direktori
+## 📂 Directory Structure
 
 ```text
 ClipperAi/
 ├── assets/
-│   └── screenshoot/         # Folder untuk tangkapan layar aplikasi
+│   └── screenshoot/         # Application screenshots
 ├── backend/
-│   ├── api/                 # Entry point server Go (main.go)
+│   ├── api/                 # Go server entry point (main.go)
 │   ├── internal/
 │   │   ├── clip/            # Domain logic (Handler, Service, State)
-│   │   └── pkg/             # Wrapper untuk FFmpeg & Ollama
-│   └── outputs/             # Tempat penyimpanan sementara hasil video
-├── docs/                    # Dokumentasi lengkap proyek (API, Plan, Code Convention)
+│   │   └── pkg/             # FFmpeg & Ollama wrappers
+│   └── outputs/             # Temporary storage for generated videos
+├── docs/                    # Complete project documentation (API, Architecture, Code Conventions)
 ├── frontend/
 │   ├── lib/
 │   │   ├── core/            # Theme, API Client
-│   │   └── features/        # Komponen UI (Model, Provider, Views)
-│   └── web/                 # File build web (index.html)
+│   │   └── features/        # UI Components (Models, Providers, Views)
+│   └── web/                 # Web build files (index.html)
 └── README.md
 ```
 
 ---
 
-## 📜 Dokumentasi Lebih Lanjut
+## 📜 Further Documentation
 
 - [Backend API Documentation](docs/backend-api.md)
 - [Backend Summary](docs/backend-summarize.md)
@@ -123,4 +123,4 @@ ClipperAi/
 
 ---
 
-_Dibuat oleh AI Clipper Dev Team_
+_Created by the AI Clipper Dev Team_

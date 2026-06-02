@@ -1,13 +1,13 @@
 # Flutter Web Frontend — Implementation Plan (Step-by-Step)
 
-> **Tujuan Dokumen:** Memberikan panduan dan instruksi teknis yang presisi untuk membangun antarmuka web (MVP) menggunakan Flutter. Frontend ini akan berinteraksi dengan backend Local AI Clipper (Go) secara asinkron (polling) dan menyajikan pengalaman pengguna yang modern, premium, serta responsif.
+> **Purpose of this document:** Provide precise technical guidance and instructions for building a web interface (MVP) using Flutter. This frontend will interact asynchronously (via polling) with the Local AI Clipper backend (Go) and deliver a modern, premium, and responsive user experience.
 
-> **PENTING:** Sebelum mengeksekusi fase apa pun di bawah ini, agen **WAJIB** membaca dan mematuhi seluruh aturan penulisan kode yang ada di file `/docs/code-convention.md`.
+> **IMPORTANT:** Before executing any phase below, the agent **MUST** read and adhere to all coding conventions found in the `/docs/code-convention.md` file.
 
 ---
 
-## 🎯 Gambaran Umum Aplikasi
-Klien Flutter Web akan menjadi dashboard single-page yang elegan dengan visualisasi proses yang interaktif:
+## 🎯 Application Overview
+The Flutter Web client will serve as an elegant single-page dashboard featuring interactive process visualization:
 ```mermaid
 graph TD
     A[Home Page: Input YouTube URL] -->|Submit POST| B[Loading View: Polling status]
@@ -17,70 +17,70 @@ graph TD
 
 ---
 
-## ⚙️ Referensi Arsitektur & Folder
+## ⚙️ Architecture & Folder Reference
 
-Struktur folder mengadopsi pola **Feature-Based (Slicing by Feature)** agar modular dan mudah dikembangkan:
+The folder structure adopts a **Feature-Based (Slicing by Feature)** approach to ensure modularity and scalability:
 
 ```text
 ClipperAi/frontend/
-├── web/                         # Konfigurasi Web Flutter standar
+├── web/                         # Standard Flutter Web configuration
 ├── lib/
 │   ├── core/
-│   │   ├── api_client.dart       # Client HTTP menggunakan Dio
-│   │   └── theme.dart            # Sistem Desain & Dark Theme Premium
+│   │   ├── api_client.dart       # HTTP Client using Dio
+│   │   └── theme.dart            # Design System & Premium Dark Theme
 │   ├── features/
 │   │   └── clip_generator/
 │   │       ├── models/
-│   │       │   └── job_response.dart # Model data untuk JSON backend
+│   │       │   └── job_response.dart # Data model mapping backend JSON
 │   │       ├── providers/
-│   │       │   └── clip_provider.dart # Pengelola state & polling logic
+│   │       │   └── clip_provider.dart # State manager & polling logic
 │   │       └── views/
 │   │           ├── home_page.dart     # Entry point view & layout wrapper
-│   │           ├── loading_view.dart  # Tampilan animasi transisi status
-│   │           └── result_view.dart   # Video Player & tombol Download/Copy
-│   └── main.dart                 # Setup & entry point aplikasi
-├── pubspec.yaml                 # Dependensi proyek
+│   │           ├── loading_view.dart  # Animated status transition view
+│   │           └── result_view.dart   # Video Player & Download/Copy buttons
+│   └── main.dart                 # App setup & entry point
+├── pubspec.yaml                 # Project dependencies
 └── README.md
 ```
 
 ---
 
-## 🚀 FASE 0: Inisialisasi Proyek & Dependencies
+## 🚀 PHASE 0: Project Initialization & Dependencies
 
-### Tugas:
-1. Buat proyek Flutter baru dengan target **Web** di dalam folder `ClipperAi/frontend/`:
+### Tasks:
+1. Create a new Flutter project targeting **Web** inside the `ClipperAi/frontend/` folder:
    ```bash
    cd /Users/sgo-byan/project/ClipperAi
    flutter create --platforms=web frontend
    ```
-2. Tambahkan dependencies wajib pada `pubspec.yaml` di dalam folder `frontend`:
+2. Add the required dependencies to `pubspec.yaml` inside the `frontend` folder:
    ```yaml
    dependencies:
      flutter:
        sdk: flutter
-     dio: ^5.4.0                  # HTTP Client canggih
-     provider: ^6.1.1             # State management sederhana dan clean
-     media_kit: ^1.1.10           # Framework pemutar media universal
-     media_kit_video: ^1.1.10     # Widget video renderer untuk media_kit
-     google_fonts: ^6.1.0         # Tipografi premium modern (Inter / Outfit)
-     flutter_spinkit: ^5.2.0      # Animasi loading premium
-     url_launcher: ^6.2.5         # Membuka tautan eksternal (untuk download)
-     flutter_dotenv: ^5.1.0       # Penanganan file konfigurasi .env secara dinamis
+     dio: ^5.4.0                  # Advanced HTTP Client
+     provider: ^6.1.1             # Simple and clean state management
+     media_kit: ^1.1.10           # Universal media player framework
+     media_kit_video: ^1.1.10     # Video renderer widget for media_kit
+     google_fonts: ^6.1.0         # Premium modern typography (Inter / Outfit)
+     flutter_spinkit: ^5.2.0      # Premium loading animations
+     url_launcher: ^6.2.5         # Open external links (for downloading)
+     flutter_dotenv: ^5.1.0       # Dynamic handling of .env configuration files
    ```
-3. Jalankan `flutter pub get` untuk mengunduh seluruh dependensi.
+3. Run `flutter pub get` to download all dependencies.
 
 ---
 
-## ⚙️ FASE 0.5: Konfigurasi Environment (`.env` & `pubspec.yaml` Assets)
+## ⚙️ PHASE 0.5: Environment Configuration (`.env` & `pubspec.yaml` Assets)
 
-Untuk menghindari *hardcoding* konfigurasi (seperti base URL backend), kita akan menggunakan file `.env` yang dibundel sebagai aset aplikasi.
+To avoid hardcoding configurations (like the backend base URL), we will use a `.env` file bundled as an application asset.
 
-### Tugas:
-1. Buat file `.env` di root folder `frontend/`:
+### Tasks:
+1. Create a `.env` file in the root `frontend/` folder:
    ```env
    API_BASE_URL=http://localhost:8080
    ```
-2. Daftarkan file `.env` tersebut pada bagian `assets` di file `pubspec.yaml` agar dikenali oleh Flutter:
+2. Register the `.env` file under the `assets` section in `pubspec.yaml` so Flutter can read it:
    ```yaml
    flutter:
      assets:
@@ -89,9 +89,9 @@ Untuk menghindari *hardcoding* konfigurasi (seperti base URL backend), kita akan
 
 ---
 
-## 🎨 FASE 1: Premium Dark Theme & Design System (`core/theme.dart`)
+## 🎨 PHASE 1: Premium Dark Theme & Design System (`core/theme.dart`)
 
-Untuk memberikan impresi pertama yang memukau (*Wow Effect*), gunakan palet warna premium dark mode dengan gradasi halus (bukan hitam pekat polos) serta tipografi modern Google Fonts Inter.
+To create a stunning first impression (the "Wow Effect"), use a premium dark mode color palette with smooth gradients (avoid pure flat black) and modern Google Fonts like Inter and Outfit.
 
 ```dart
 // lib/core/theme.dart
@@ -99,13 +99,13 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
-  // Palette Warna
-  static const Color darkBg = Color(0xFF0F0F12);       // Background pekat bernuansa ungu-abu
-  static const Color cardBg = Color(0xFF181820);       // Background kartu / container
-  static const Color primaryPurple = Color(0xFF8B5CF6); // Ungu neon modern
-  static const Color accentCyan = Color(0xFF06B6D4);    // Cyan kontras untuk highlights
-  static const Color textMain = Color(0xFFF3F4F6);     // Putih abu lembut
-  static const Color textMuted = Color(0xFF9CA3AF);    // Abu-abu keterangan
+  // Color Palette
+  static const Color darkBg = Color(0xFF0F0F12);       // Deep background with purplish-gray tint
+  static const Color cardBg = Color(0xFF181820);       // Card / container background
+  static const Color primaryPurple = Color(0xFF8B5CF6); // Modern neon purple
+  static const Color accentCyan = Color(0xFF06B6D4);    // Contrasting cyan for highlights
+  static const Color textMain = Color(0xFFF3F4F6);     // Soft off-white
+  static const Color textMuted = Color(0xFF9CA3AF);    // Muted gray text
 
   static ThemeData get darkTheme {
     return ThemeData(
@@ -165,9 +165,9 @@ class AppTheme {
 
 ---
 
-## 📡 FASE 2: API Client Wrapper (`core/api_client.dart`)
+## 📡 PHASE 2: API Client Wrapper (`core/api_client.dart`)
 
-Buat wrapper HTTP menggunakan `Dio`. Kita membaca nilai `API_BASE_URL` secara dinamis dari file `.env` yang dimuat menggunakan package `flutter_dotenv`.
+Create an HTTP wrapper using `Dio`. Dynamically read the `API_BASE_URL` value from the `.env` file using the `flutter_dotenv` package.
 
 ```dart
 // lib/core/api_client.dart
@@ -194,11 +194,11 @@ class ApiClient {
 
 ---
 
-## 📦 FASE 3: Data Model (`features/clip_generator/models/job_response.dart`)
+## 📦 PHASE 3: Data Model (`features/clip_generator/models/job_response.dart`)
 
-Model data ini memetakan format JSON respons status yang dikembalikan oleh server Go.
+This data model maps the JSON status response returned by the Go server.
 
-### Response JSON dari GET `/api/v1/clips/:id`:
+### JSON Response from GET `/api/v1/clips/:id`:
 ```json
 {
   "id": "758509c3-...",
@@ -208,7 +208,7 @@ Model data ini memetakan format JSON respons status yang dikembalikan oleh serve
 }
 ```
 
-### Implementasi Dart Model:
+### Dart Model Implementation:
 ```dart
 // lib/features/clip_generator/models/job_response.dart
 
@@ -255,9 +255,9 @@ class JobResponse {
 
 ---
 
-## 🧠 FASE 4: State Management & Polling Engine (`features/clip_generator/providers/clip_provider.dart`)
+## 🧠 PHASE 4: State Management & Polling Engine (`features/clip_generator/providers/clip_provider.dart`)
 
-Pengelola state utama yang menangani flow pendaftaran URL video baru dan polling berkala setiap 3 detik.
+The primary state manager handles the flow of submitting a new video URL and executing periodic polling every 3 seconds.
 
 ```dart
 // lib/features/clip_generator/providers/clip_provider.dart
@@ -286,7 +286,7 @@ class ClipProvider extends ChangeNotifier {
 
   Timer? _pollingTimer;
 
-  // Submit URL YouTube untuk memicu pembuatan clip
+  // Submit YouTube URL to trigger clip generation
   Future<void> submitYoutubeUrl(String youtubeUrl) async {
     _state = UIState.submitting;
     _errorMessage = null;
@@ -305,19 +305,19 @@ class ClipProvider extends ChangeNotifier {
         _state = UIState.loading;
         notifyListeners();
         
-        // Memulai asinkron polling status
+        // Start asynchronous status polling
         _startPolling(_jobId!);
       } else {
         throw Exception('Server returned status code: ${response.statusCode}');
       }
     } on DioException catch (e) {
-      _handleError(e.message ?? 'Gagal menghubungi server.');
+      _handleError(e.message ?? 'Failed to contact server.');
     } catch (e) {
       _handleError(e.toString());
     }
   }
 
-  // Polling Engine: Periksa status backend setiap 3 detik
+  // Polling Engine: Check backend status every 3 seconds
   void _startPolling(String id) {
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
@@ -329,7 +329,7 @@ class ClipProvider extends ChangeNotifier {
           
           if (job.status == ClipStatus.completed) {
             timer.cancel();
-            // Prefix output path dengan base URL backend
+            // Prefix the output path with the backend base URL
             final path = job.videoPath ?? '';
             final cleanPath = path.startsWith('/') ? path : '/$path';
             _videoUrl = '${_apiClient.dio.options.baseUrl}$cleanPath';
@@ -338,13 +338,13 @@ class ClipProvider extends ChangeNotifier {
             notifyListeners();
           } else if (job.status == ClipStatus.failed) {
             timer.cancel();
-            _handleError(job.error ?? 'Backend gagal memproses klip video.');
+            _handleError(job.error ?? 'Backend failed to process the video clip.');
           }
-          // Jika masih 'processing', biarkan timer terus berjalan
+          // If still 'processing', let the timer keep running
         }
       } catch (e) {
-        // Toleransi error jaringan temporer saat polling,
-        // jangan langsung batalkan timer kecuali error berturut-turut.
+        // Tolerate temporary network errors during polling,
+        // do not cancel the timer immediately unless errors are consecutive.
       }
     });
   }
@@ -356,7 +356,7 @@ class ClipProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // Reset state agar pengguna bisa memproses video baru
+  // Reset state so the user can process a new video
   void reset() {
     _pollingTimer?.cancel();
     _state = UIState.idle;
@@ -376,9 +376,9 @@ class ClipProvider extends ChangeNotifier {
 
 ---
 
-## 🖥️ FASE 5: UI Utama & Layout (`features/clip_generator/views/home_page.dart`)
+## 🖥️ PHASE 5: Main UI & Layout (`features/clip_generator/views/home_page.dart`)
 
-Halaman utama yang menampilkan logo mewah, input text bernuansa modern, serta menampung pergantian widget/view secara dinamis berdasarkan state.
+The main page displays an elegant logo, modern text inputs, and dynamically swaps widgets/views based on the current state.
 
 ```dart
 // lib/features/clip_generator/views/home_page.dart
@@ -419,7 +419,7 @@ class _HomePageState extends State<HomePage> {
         return Scaffold(
           body: Stack(
             children: [
-              // Efek Background Gradasi Elegan
+              // Elegant Gradient Background Effect
               Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -463,24 +463,24 @@ class _HomePageState extends State<HomePage> {
                                 controller: _urlController,
                                 keyboardType: TextInputType.url,
                                 decoration: const InputDecoration(
-                                  hintText: 'Masukkan link YouTube (e.g., https://...)',
+                                  hintText: 'Enter YouTube link (e.g., https://...)',
                                   prefixIcon: Icon(Icons.link, color: Colors.grey),
                                 ),
                                 validator: (value) {
                                   if (value == null || value.trim().isEmpty) {
-                                    return 'Tautan URL tidak boleh kosong';
+                                    return 'URL cannot be empty';
                                   }
                                   if (!value.contains('youtube.com') &&
                                       !value.contains('youtu.be')) {
-                                    return 'Harap masukkan tautan YouTube yang valid';
+                                    return 'Please enter a valid YouTube link';
                                   }
                                   return null;
                                 },
                               ),
                               const SizedBox(height: 24),
                               
-                              // Pilihan Layout
-                              const Text('Pilih Tipe Video:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                              // Layout Selection (Placeholders for UI)
+                              const Text('Select Video Type:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                               const SizedBox(height: 12),
                               Wrap(
                                 spacing: 12.0,
@@ -489,18 +489,12 @@ class _HomePageState extends State<HomePage> {
                                 children: [
                                   ChoiceChip(
                                     label: const Text('Solo (Vlog)'),
-                                    selected: provider.selectedLayout == 'solo',
-                                    onSelected: (selected) {
-                                      if (selected) provider.setLayout('solo');
-                                    },
+                                    selected: true, // Example static selection
+                                    onSelected: (selected) {},
                                     selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
-                                    side: BorderSide(
-                                      color: provider.selectedLayout == 'solo' 
-                                          ? Theme.of(context).primaryColor 
-                                          : Colors.grey.withOpacity(0.3),
-                                    ),
+                                    side: BorderSide(color: Theme.of(context).primaryColor),
                                   ),
-                                  // (Tambahkan chip untuk 'presentation' dan 'podcast' di sini)
+                                  // (Add more chips for 'presentation' and 'podcast' here)
                                 ],
                               ),
                               const SizedBox(height: 24),
@@ -522,7 +516,7 @@ class _HomePageState extends State<HomePage> {
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: Text(
-                                          provider.errorMessage ?? 'Terjadi kesalahan sistem.',
+                                          provider.errorMessage ?? 'A system error occurred.',
                                           style: const TextStyle(color: Colors.redAccent),
                                         ),
                                       ),
@@ -566,7 +560,7 @@ class _HomePageState extends State<HomePage> {
                                             ),
                                           )
                                         : const Text(
-                                            'Gunting Video Menjadi Vertical Clip ⚡',
+                                            'Generate Vertical Clip ⚡',
                                             style: TextStyle(
                                               fontSize: 16,
                                               fontWeight: FontWeight.bold,
@@ -612,7 +606,7 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Ekstrak momen terbaik YouTube menjadi video 9:16 menggunakan kecerdasan buatan lokal.',
+          'Extract the best YouTube moments into 9:16 videos using local AI.',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodyMedium,
         ),
@@ -624,10 +618,10 @@ class _HomePageState extends State<HomePage> {
 
 ---
 
-## ⏳ FASE 6: State Views (Loading & Result)
+## ⏳ PHASE 6: State Views (Loading & Result)
 
-### 1. Animasi Status Dinamis (`features/clip_generator/views/loading_view.dart`)
-Tampilan loading premium yang memberi tahu pengguna tentang perkembangan di backend (Download -> Analysis -> Slicing).
+### 1. Dynamic Status Animation (`features/clip_generator/views/loading_view.dart`)
+A premium loading screen informing the user about the backend's progress (Download -> Analysis -> Slicing).
 
 ```dart
 // lib/features/clip_generator/views/loading_view.dart
@@ -665,7 +659,7 @@ class LoadingView extends StatelessWidget {
               const SizedBox(height: 48),
               
               const Text(
-                'AI Sedang Memproses Klip Anda...',
+                'AI is Processing Your Clip...',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -677,16 +671,16 @@ class LoadingView extends StatelessWidget {
               Container(
                 constraints: const BoxConstraints(maxWidth: 450),
                 child: const Text(
-                  'Server lokal sedang mendownload transcript, melakukan evaluasi heuristik, '
-                  'meminta analisis model LLM Ollama, mengunduh segmen video, dan menerapkan crop 9:16 '
-                  'melalui FFmpeg. Proses ini membutuhkan waktu sekitar 1-3 menit.',
+                  'The local server is downloading the transcript, running heuristic evaluations, '
+                  'querying the Ollama LLM, downloading the video segment, and applying a 9:16 crop '
+                  'via FFmpeg. This process takes about 1-3 minutes.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.grey, height: 1.5),
                 ),
               ),
               const SizedBox(height: 32),
               
-              // Tampilkan Job ID sebagai tanda proses aktif
+              // Display Job ID
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
@@ -700,12 +694,12 @@ class LoadingView extends StatelessWidget {
               ),
               const SizedBox(height: 40),
               
-              // Tombol Batal
+              // Cancel Button
               TextButton.icon(
                 onPressed: () => provider.reset(),
                 icon: const Icon(Icons.cancel_outlined, color: Colors.redAccent),
                 label: const Text(
-                  'Batalkan & Kembali',
+                  'Cancel & Go Back',
                   style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -718,8 +712,8 @@ class LoadingView extends StatelessWidget {
 }
 ```
 
-### 2. Video Player Modern (`features/clip_generator/views/result_view.dart`)
-Menggunakan `media_kit` untuk memutar klip vertikal hasil rendering lokal.
+### 2. Modern Video Player (`features/clip_generator/views/result_view.dart`)
+Uses `media_kit` to play the locally rendered vertical clip.
 
 ```dart
 // lib/features/clip_generator/views/result_view.dart
@@ -747,11 +741,11 @@ class _ResultViewState extends State<ResultView> {
     super.initState();
     final provider = Provider.of<ClipProvider>(context, listen: false);
     
-    // Inisialisasi Player MediaKit
+    // Initialize MediaKit Player
     player = Player();
     controller = VideoController(player);
 
-    // Main video url dari state provider (Autoplay dinonaktifkan di awal sesuai web policy)
+    // Open main video URL (Autoplay disabled by default due to web policies)
     player.open(Media(provider.videoUrl ?? ''));
   }
 
@@ -768,7 +762,7 @@ class _ResultViewState extends State<ResultView> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Gagal membuka link unduh.')),
+        const SnackBar(content: Text('Failed to open the download link.')),
       );
     }
   }
@@ -776,7 +770,7 @@ class _ResultViewState extends State<ResultView> {
   void _copyToClipboard(String url) {
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Tautan video berhasil disalin ke clipboard! 📋')),
+      const SnackBar(content: Text('Video link copied to clipboard! 📋')),
     );
   }
 
@@ -796,17 +790,17 @@ class _ResultViewState extends State<ResultView> {
                 child: Video(
                   controller: controller,
                   fit: BoxFit.cover,
-                  controls: NoVideoControls, // UI bersih ala TikTok
+                  controls: NoVideoControls, // Clean UI, TikTok style
                 ),
               ),
 
               // Layer 2: Gradient Overlay
               const _GradientOverlay(),
 
-              // Layer 3: Text Content (Pojok Kiri Bawah)
+              // Layer 3: Text Content (Bottom Left)
               const _TikTokTextInfo(),
 
-              // Layer 4: Action Buttons (Kolom Kanan Bawah)
+              // Layer 4: Action Buttons (Bottom Right Column)
               _TikTokActionColumn(
                 onDownload: () => _downloadVideo(provider.videoUrl ?? ''),
                 onCopyLink: () => _copyToClipboard(provider.videoUrl ?? ''),
@@ -854,12 +848,12 @@ class _TikTokTextInfo extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
-            child: const Text('SUKSES DI-GENERATE 🎉', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+            child: const Text('SUCCESSFULLY GENERATED 🎉', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
           ),
           const SizedBox(height: 12),
-          const Text('Klip Video Anda Telah Siap!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+          const Text('Your Video Clip is Ready!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
           const SizedBox(height: 8),
-          Text('AI berhasil memotong bagian yang paling menarik dan mengoptimalkannya menjadi format vertikal 9:16.', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
+          Text('AI successfully extracted the most engaging segment and optimized it to a vertical 9:16 format.', style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 13)),
         ],
       ),
     );
@@ -881,7 +875,7 @@ class _TikTokActionColumn extends StatelessWidget {
           const SizedBox(height: 24),
           _ActionButton(icon: Icons.link_rounded, label: 'Copy Link', onTap: onCopyLink),
           const SizedBox(height: 24),
-          _ActionButton(icon: Icons.add_circle_outline_rounded, label: 'Buat Baru', onTap: onReset),
+          _ActionButton(icon: Icons.add_circle_outline_rounded, label: 'Create New', onTap: onReset),
         ],
       ),
     );
@@ -918,9 +912,9 @@ class _ActionButton extends StatelessWidget {
 
 ---
 
-## 🛠️ FASE 7: Wiring & Entrypoint (`main.dart` & Web initialization)
+## 🛠️ PHASE 7: Wiring & Entrypoint (`main.dart` & Web initialization)
 
-Gabungkan seluruh komponen ke dalam `main.dart`, muat file konfigurasi `.env`, dan aktifkan MediaKit untuk platform Web.
+Integrate all components in `main.dart`, load the `.env` file, and initialize MediaKit for the Web platform.
 
 ```dart
 // lib/main.dart
@@ -933,11 +927,11 @@ import 'features/clip_generator/providers/clip_provider.dart';
 import 'features/clip_generator/views/home_page.dart';
 
 Future<void> main() async {
-  // Inisialisasi Wajib untuk MediaKit
+  // Required Initialization for MediaKit
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
 
-  // Memuat file konfigurasi environment (.env) secara asinkron sebelum widget dirender
+  // Load environment configurations asynchronously before rendering the app
   await dotenv.load(fileName: ".env");
 
   runApp(
@@ -967,30 +961,30 @@ class ClipperApp extends StatelessWidget {
 
 ---
 
-## 🌐 FASE 8: Constraint Flutter Web & CORS
+## 🌐 PHASE 8: Flutter Web Constraints & CORS
 
 ### 1. Web Renderer
-Sangat direkomendasikan menjalankan Flutter Web dengan HTML Renderer agar performa rendering video canvas berjalan mulus pada platform desktop:
+It is highly recommended to run Flutter Web using the HTML Renderer to ensure video canvas rendering performs smoothly on desktop platforms:
 ```bash
 flutter run -d chrome --web-renderer html
 ```
 
-### 2. Penanganan Web Autoplay Policy
-Sebagian besar browser modern (Chrome, Safari, Edge) melarang pemutaran video bersuara secara otomatis (*autoplay with sound*). Oleh karena itu:
-- MediaKit tidak melakukan `.play()` secara asinkron setelah `.open()`.
-- Pengguna harus menekan tombol Play secara manual, atau pengembang dapat memilih melakukan *mute* default jika autoplay dipaksakan.
+### 2. Handling Web Autoplay Policies
+Most modern browsers (Chrome, Safari, Edge) strictly forbid auto-playing videos with sound. Because of this:
+- MediaKit does not automatically trigger `.play()` asynchronously after calling `.open()`.
+- Users must manually press the Play button, or developers must choose to mute the video by default if forced autoplay is required.
 
 ---
 
-## 🧪 Rencana Verifikasi (Manual & Automated)
+## 🧪 Verification Plan (Manual & Automated)
 
-### 1. Uji Coba Integrasi Lokal
-1. **Langkah 1:** Jalankan Backend Go lokal pada port `8080` (pastikan backend aktif dan Ollama berjalan).
-2. **Langkah 2:** Jalankan Flutter Web di folder `frontend`:
+### 1. Local Integration Testing
+1. **Step 1:** Run the local Go Backend on port `8080` (ensure the backend is active and Ollama is running).
+2. **Step 2:** Start Flutter Web from the `frontend` directory:
    ```bash
    flutter run -d chrome --web-renderer html
    ```
-3. **Langkah 3:** Masukkan link YouTube uji coba (misalnya video wawancara berdurasi 5-10 menit).
-4. **Langkah 4:** Kirim request, pastikan UI bertransisi ke tampilan loading spin.
-5. **Langkah 5:** Pantau terminal Go dan pastikan polling GET mengembalikan status `processing` berkala setiap 3 detik.
-6. **Langkah 6:** Setelah pemrosesan FFmpeg selesai, pastikan UI Flutter bertransisi ke layar pemutar video, video dapat dimuat tanpa error CORS, dan tombol download berhasil mengunduh file `.mp4`.
+3. **Step 3:** Enter a test YouTube URL (e.g., a 5-10 minute interview video).
+4. **Step 4:** Submit the request, ensuring the UI transitions to the loading spinner view.
+5. **Step 5:** Monitor the Go terminal and verify that the GET polling requests return a `processing` status every 3 seconds.
+6. **Step 6:** Once the FFmpeg processing completes, ensure the Flutter UI seamlessly transitions to the video player view, the video loads without CORS errors, and the download button successfully fetches the `.mp4` file.
