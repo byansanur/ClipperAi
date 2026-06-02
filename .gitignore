@@ -1,1 +1,42 @@
+# =========================
+# Aplikasi ClipperAi
+# =========================
+# Abaikan semua file di dalam folder outputs/
+outputs/*
+# TETAPI tetap track file .gitkeep agar foldernya tidak hilang
+!outputs/.gitkeep
+
+# Abaikan file environment variable (SANGAT KRITIS)
 .env
+
+# =========================
+# Go (Golang)
+# =========================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+clipperai # Jika build output bernama clipperai
+
+# Test binary & coverage
+*.test
+*.out
+
+# =========================
+# OS / Editor / Mac M2
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# VSCode / Cursor / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
