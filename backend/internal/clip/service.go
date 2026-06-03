@@ -6,26 +6,15 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
 
 	"github.com/sgo-byan/clipperai/internal/pkg/ffmpeg"
 	"github.com/sgo-byan/clipperai/internal/pkg/ollama"
 )
 
-// TranscriptChunk merepresentasikan potongan dari transcript penuh.
-type TranscriptChunk struct {
-	Text        string
-	StartOffset int
-	EndOffset   int
-}
+// (Moved TranscriptChunk and ScoredChunk to state.go)
 
-// ScoredChunk merepresentasikan chunk transcript yang sudah dinilai (heuristic).
-type ScoredChunk struct {
-	Chunk TranscriptChunk
-	Score int
-}
+// Membatasi proses berat (LLM & FFmpeg) maksimal 1 dalam satu waktu
+var processingSemaphore = make(chan struct{}, 1)
 
 // ClipService menangani orchestrasi pemrosesan clip.
 type ClipService struct {
@@ -55,162 +44,203 @@ func (s *ClipService) ProcessClip(ctx context.Context, cancel context.CancelFunc
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[SERVICE] Panic recovered in background job %s: %v", jobID, r)
-			s.store.FailJob(jobID, "Internal server error during processing")
+			s.store.FailJob(jobID, humanizeError("Internal server error during processing"))
 		}
 	}()
 
 	log.Printf("[SERVICE] Starting job %s for URL %s", jobID, youtubeURL)
 
+	// 1. Masuk ke antrean (akan nge-block jika loket sedang dipakai)
+	processingSemaphore <- struct{}{}
+
+	// 2. Pastikan loket dilepas kembali saat fungsi selesai/gagal
+	defer func() {
+		<-processingSemaphore
+	}()
+
 	// Step 2: Fetch transcript
 	transcript, err := ffmpeg.FetchTranscript(ctx, youtubeURL, s.outputDir)
 	if err != nil {
-		s.store.FailJob(jobID, fmt.Errorf("failed to fetch transcript: %w", err).Error())
+		s.store.FailJob(jobID, humanizeError(fmt.Errorf("failed to fetch transcript: %w", err).Error()))
 		return
 	}
 
 	// Step 3: Chunk transcript (5 menit = ~750 kata)
 	chunks := chunkTranscript(transcript, 5)
 	if len(chunks) == 0 {
-		s.store.FailJob(jobID, "transcript is empty or could not be chunked")
+		s.store.FailJob(jobID, humanizeError("transcript is empty or could not be chunked"))
 		return
 	}
 
-	// Step 4: Score chunks dan ambil top 1
+	// Step 4: Score chunks
 	scoredChunks := scoreChunks(chunks)
-	topChunk := scoredChunks[0].Chunk.Text
 
-	// Step 5: LLM call menggunakan Ollama
-	clipTs, err := s.ollamaClient.FindTimestamps(ctx, topChunk)
-	if err != nil {
-		s.store.FailJob(jobID, fmt.Errorf("LLM failed to find timestamps: %w", err).Error())
-		return
-	}
-
-	// Step 6: Konversi timestamp untuk FFmpeg
-	startSec, err := parseTimeToSeconds(clipTs.StartTime)
-	if err != nil {
-		s.store.FailJob(jobID, fmt.Errorf("invalid start time from LLM: %w", err).Error())
-		return
-	}
-	endSec, err := parseTimeToSeconds(clipTs.EndTime)
-	if err != nil {
-		s.store.FailJob(jobID, fmt.Errorf("invalid end time from LLM: %w", err).Error())
-		return
-	}
-
-	safeFfmpegStart := secondsToFFmpegTime(startSec)
-	safeFfmpegEnd := secondsToFFmpegTime(endSec)
-
-	// Validasi: start harus lebih kecil dari end, durasi antara 10-120 detik
-	clipDuration := endSec - startSec
-	if startSec >= endSec {
-		s.store.FailJob(jobID, fmt.Sprintf("invalid timestamps from LLM: start (%s) >= end (%s)", safeFfmpegStart, safeFfmpegEnd))
-		return
-	}
-	if clipDuration < 10 || clipDuration > 120 {
-		s.store.FailJob(jobID, fmt.Sprintf("clip duration %d seconds is out of range (10-120s), timestamps: %s to %s", clipDuration, safeFfmpegStart, safeFfmpegEnd))
-		return
-	}
-	log.Printf("[SERVICE] Validated timestamps: %s to %s (duration: %ds)", safeFfmpegStart, safeFfmpegEnd, clipDuration)
-
-	// Step 7: Download video dengan yt-dlp
+	// Step 5: Download video dengan yt-dlp sekali di awal
 	tempPath := filepath.Join(s.outputDir, fmt.Sprintf("temp_%s.mp4", jobID))
 	if err := ffmpeg.DownloadVideo(ctx, youtubeURL, tempPath); err != nil {
-		s.store.FailJob(jobID, fmt.Errorf("failed to download video: %w", err).Error())
+		s.store.FailJob(jobID, humanizeError(fmt.Errorf("failed to download video: %w", err).Error()))
 		return
 	}
 	defer os.Remove(tempPath)
 
-	// Step 8: Slice & crop video menjadi 9:16 vertikal
-	outputPath := filepath.Join(s.outputDir, fmt.Sprintf("output_clip_%s.mp4", jobID))
-	if err := ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeFfmpegStart, safeFfmpegEnd, layoutMode); err != nil {
-		s.store.FailJob(jobID, fmt.Errorf("failed to slice and crop video: %w", err).Error())
+	// Simpan chunk untuk Generate More
+	s.store.UpdateJobChunks(jobID, scoredChunks, 1, layoutMode) // index 1 karena 0 diproses sekarang
+
+	successCount := 0
+
+	// Proses index 0 saja
+	topChunk := scoredChunks[0].Chunk.Text
+
+	// Step 6: LLM call menggunakan Ollama
+	clipTs, err := s.ollamaClient.FindTimestamps(ctx, topChunk)
+	var safeFfmpegStart, safeFfmpegEnd string
+	var startSec, endSec int
+
+	if err != nil {
+		log.Printf("[SERVICE] LLM failed to find timestamps for job %s: %v. Using fallback.", jobID, err)
+		startSec = scoredChunks[0].Chunk.StartOffset
+		endSec = scoredChunks[0].Chunk.StartOffset + 60
+		safeFfmpegStart = secondsToFFmpegTime(startSec)
+		safeFfmpegEnd = secondsToFFmpegTime(endSec)
+	} else {
+		// Step 7: Normalisasi Timestamp dan konversi format
+		startSec, err = parseTimeToSeconds(clipTs.StartTime)
+		if err != nil {
+			startSec = scoredChunks[0].Chunk.StartOffset
+		}
+		endSec, err = parseTimeToSeconds(clipTs.EndTime)
+		if err != nil {
+			endSec = startSec + 60
+		}
+
+		// Validasi dan batasan durasi clip 60-90 detik
+		duration := endSec - startSec
+		if duration < 30 {
+			endSec = startSec + 60
+		} else if duration > 90 {
+			endSec = startSec + 90
+		}
+
+		safeFfmpegStart = secondsToFFmpegTime(startSec)
+		safeFfmpegEnd = secondsToFFmpegTime(endSec)
+	}
+
+	clipDuration := endSec - startSec
+	if startSec < endSec && clipDuration >= 10 && clipDuration <= 120 {
+		log.Printf("[SERVICE] Validated timestamps for chunk 0: %s to %s (duration: %ds)", safeFfmpegStart, safeFfmpegEnd, clipDuration)
+
+		// Step 8: Slice & crop video menjadi 9:16 vertikal
+		outputPath := filepath.Join(s.outputDir, fmt.Sprintf("output_clip_%s_0.mp4", jobID))
+		if err := ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeFfmpegStart, safeFfmpegEnd, layoutMode); err == nil {
+			relativeURL := fmt.Sprintf("/outputs/output_clip_%s_0.mp4", jobID)
+			s.store.AddVideoPath(jobID, relativeURL)
+			successCount++
+		} else {
+			log.Printf("[SERVICE] failed to slice and crop video for job %s, chunk 0: %v", jobID, err)
+		}
+	}
+
+	// Step 9: Update state menjadi completed
+	if successCount > 0 {
+		log.Printf("[SERVICE] Job %s initial clip completed successfully", jobID)
+		s.store.CompleteJob(jobID)
+	} else {
+		s.store.FailJob(jobID, humanizeError("Failed to generate the initial clip"))
+	}
+}
+
+// ProcessNextClip memproses chunk berikutnya dari job yang sudah ada.
+func (s *ClipService) ProcessNextClip(ctx context.Context, jobID string, nextIdx int) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[SERVICE] Panic recovered in ProcessNextClip job %s: %v", jobID, r)
+			s.store.FailJob(jobID, humanizeError("Internal server error during processing next clip"))
+		}
+	}()
+
+	// 1. Masuk ke antrean (akan nge-block jika loket sedang dipakai)
+	processingSemaphore <- struct{}{}
+	defer func() {
+		<-processingSemaphore
+	}()
+
+	job, exists := s.store.GetJob(jobID)
+	if !exists {
+		return // Job sudah tidak ada
+	}
+
+	if nextIdx >= len(job.SortedChunks) {
+		s.store.FailJob(jobID, "Tidak ada momen menarik lagi")
 		return
 	}
 
-	// Step 9: Update state menjadi completed dengan URL relative
-	log.Printf("[SERVICE] Job %s completed successfully", jobID)
-	relativeURL := fmt.Sprintf("/outputs/output_clip_%s.mp4", jobID)
-	s.store.CompleteJob(jobID, relativeURL)
-}
-
-// chunkTranscript memecah teks berdasarkan jumlah menit estimasi (1 menit = ~150 kata).
-func chunkTranscript(transcript string, minutesPerChunk int) []TranscriptChunk {
-	words := strings.Fields(transcript)
-	wordsPerChunk := minutesPerChunk * 150
-
-	var chunks []TranscriptChunk
-	for i := 0; i < len(words); i += wordsPerChunk {
-		end := i + wordsPerChunk
-		if end > len(words) {
-			end = len(words)
-		}
-		chunk := TranscriptChunk{
-			Text: strings.Join(words[i:end], " "),
-		}
-		chunks = append(chunks, chunk)
+	chunk := job.SortedChunks[nextIdx]
+	layoutMode := job.LayoutMode
+	if layoutMode == "" {
+		layoutMode = "solo"
 	}
-	return chunks
-}
 
-// scoreChunks memberi nilai heuristic ke setiap potongan transcript.
-func scoreChunks(chunks []TranscriptChunk) []ScoredChunk {
-	keywords := []string{"tapi", "masalahnya", "gila", "sebenarnya", "ternyata", "wow", "amazing", "shocking", "seriously", "actually", "honestly", "crazy"}
-	var scored []ScoredChunk
+	log.Printf("[SERVICE] Starting to generate next clip for job %s, index %d", jobID, nextIdx)
 
-	for _, chunk := range chunks {
-		score := 0
-		lowerText := strings.ToLower(chunk.Text)
+	// Step 1: LLM call menggunakan Ollama
+	clipTs, err := s.ollamaClient.FindTimestamps(ctx, chunk.Chunk.Text)
+	var safeFfmpegStart, safeFfmpegEnd string
+	var startSec, endSec int
 
-		score += strings.Count(chunk.Text, "?") * 3
-		score += strings.Count(chunk.Text, "!") * 2
-
-		for _, kw := range keywords {
-			score += strings.Count(lowerText, kw) * 2
+	if err != nil {
+		log.Printf("[SERVICE] LLM failed to find timestamps for job %s next clip: %v. Using fallback.", jobID, err)
+		startSec = chunk.Chunk.StartOffset
+		endSec = chunk.Chunk.StartOffset + 60
+		safeFfmpegStart = secondsToFFmpegTime(startSec)
+		safeFfmpegEnd = secondsToFFmpegTime(endSec)
+	} else {
+		startSec, err = parseTimeToSeconds(clipTs.StartTime)
+		if err != nil {
+			startSec = chunk.Chunk.StartOffset
+		}
+		endSec, err = parseTimeToSeconds(clipTs.EndTime)
+		if err != nil {
+			endSec = startSec + 60
 		}
 
-		scored = append(scored, ScoredChunk{
-			Chunk: chunk,
-			Score: score,
-		})
+		duration := endSec - startSec
+		if duration < 30 {
+			endSec = startSec + 60
+		} else if duration > 90 {
+			endSec = startSec + 90
+		}
+
+		safeFfmpegStart = secondsToFFmpegTime(startSec)
+		safeFfmpegEnd = secondsToFFmpegTime(endSec)
 	}
 
-	// Sort secara descending (skor tertinggi pertama)
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].Score > scored[j].Score
-	})
-
-	return scored
-}
-
-// parseTimeToSeconds mengubah string timestamp menjadi total detik integer.
-func parseTimeToSeconds(timestamp string) (int, error) {
-	// Support untuk format detik murni
-	if sec, err := strconv.Atoi(timestamp); err == nil {
-		return sec, nil
+	clipDuration := endSec - startSec
+	if startSec >= endSec || clipDuration < 10 || clipDuration > 120 {
+		s.store.FailJob(jobID, "Durasi klip tidak valid dari hasil AI")
+		return
 	}
 
-	parts := strings.Split(timestamp, ":")
-	if len(parts) == 3 {
-		// Format HH:MM:SS
-		h, _ := strconv.Atoi(parts[0])
-		m, _ := strconv.Atoi(parts[1])
-		s, _ := strconv.Atoi(parts[2])
-		return h*3600 + m*60 + s, nil
-	} else if len(parts) == 2 {
-		// Format MM:SS
-		m, _ := strconv.Atoi(parts[0])
-		s, _ := strconv.Atoi(parts[1])
-		return m*60 + s, nil
+	// Step 2: Download ulang video master untuk clip ini agar menghemat disk space 
+	// (trade-off: menggunakan lebih banyak bandwidth/waktu)
+	tempPath := filepath.Join(s.outputDir, fmt.Sprintf("temp_%s_next_%d.mp4", jobID, nextIdx))
+	if err := ffmpeg.DownloadVideo(ctx, job.OriginalURL, tempPath); err != nil {
+		log.Printf("[SERVICE] Failed to redownload video for next clip job %s: %v", jobID, err)
+		s.store.FailJob(jobID, "Gagal mengunduh ulang video dari YouTube")
+		return
+	}
+	defer os.Remove(tempPath)
+
+	// Step 3: Slice & crop video menjadi 9:16 vertikal
+	outputPath := filepath.Join(s.outputDir, fmt.Sprintf("output_clip_%s_%d.mp4", jobID, nextIdx))
+	if err := ffmpeg.SliceAndCrop(ctx, tempPath, outputPath, safeFfmpegStart, safeFfmpegEnd, layoutMode); err != nil {
+		log.Printf("[SERVICE] failed to slice and crop video for job %s next clip: %v", jobID, err)
+		s.store.FailJob(jobID, "Gagal memotong klip video")
+		return
 	}
 
-	return 0, fmt.Errorf("invalid time format: %s", timestamp)
-}
+	relativeURL := fmt.Sprintf("/outputs/output_clip_%s_%d.mp4", jobID, nextIdx)
+	s.store.AddVideoPath(jobID, relativeURL)
 
-// secondsToFFmpegTime merubah integer total detik menjadi string HH:MM:SS.
-func secondsToFFmpegTime(seconds int) string {
-	h := seconds / 3600
-	m := (seconds % 3600) / 60
-	s := seconds % 60
-	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+	log.Printf("[SERVICE] Job %s next clip (%d) completed successfully", jobID, nextIdx)
+	s.store.CompleteJob(jobID)
 }

@@ -75,6 +75,7 @@ func (c *Client) FindTimestamps(ctx context.Context, transcriptChunk string) (*C
 	log.Println("[OLLAMA] Calling local LLM to find best timestamps")
 
 	prompt := fmt.Sprintf(`You are a video editor assistant. The transcript below contains time markers in [HH:MM:SS] format. Use ONLY these time markers to find the most engaging 60-120 second portion for a short-form vertical video clip.
+If the transcript appears to be song lyrics or poetry, select the most continuous stanza (like a chorus) as the most engaging part.
 
 TRANSCRIPT:
 %s

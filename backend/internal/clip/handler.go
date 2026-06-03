@@ -56,7 +56,7 @@ func (h *ClipHandler) SubmitClip(c *gin.Context) {
 	// Buat context dengan timeout 10 menit untuk proses keseluruhan
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	
-	h.store.CreateJob(jobID, cancel)
+	h.store.CreateJob(jobID, req.YoutubeURL, cancel)
 
 	// Mulai pemrosesan di background dengan context
 	go h.service.ProcessClip(ctx, cancel, jobID, req.YoutubeURL, req.LayoutMode)
@@ -90,4 +90,45 @@ func (h *ClipHandler) CancelClip(c *gin.Context) {
 
 	h.store.CancelJob(id)
 	c.JSON(http.StatusOK, gin.H{"message": "Job cancellation requested successfully"})
+}
+
+// GenerateNextClip menangani request POST /api/v1/clips/:id/next
+func (h *ClipHandler) GenerateNextClip(c *gin.Context) {
+	id := c.Param("id")
+
+	job, exists := h.store.GetJob(id)
+	if !exists {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Job not found"})
+		return
+	}
+
+	if job.NextChunkIdx >= len(job.SortedChunks) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tidak ada momen menarik lagi"})
+		return
+	}
+
+	// Ubah status kembali menjadi processing
+	h.store.SetProcessing(id)
+
+	// Buat context dengan timeout baru
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	
+	// Simpan fungsi cancel yang baru (tapi saat ini di state.go fungsi SetProcessing tidak menimpa cancel, 
+	// ideally cancel context perlu diupdate, tapi kita akan handle lewat context parameter)
+	
+	// Increment counter index
+	if h.store.IncrementNextChunkIdx(id) {
+		// Panggil service untuk memproses chunk ini di background
+		go func() {
+			defer cancel()
+			// Kita passing NextChunkIdx yang lama (sebelum di-increment)
+			h.service.ProcessNextClip(ctx, id, job.NextChunkIdx)
+		}()
+	} else {
+		cancel()
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{
+		"message": "Processing next clip started",
+	})
 }

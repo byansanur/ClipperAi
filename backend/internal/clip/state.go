@@ -14,13 +14,30 @@ const (
 	StatusFailed     JobStatus = "failed"
 )
 
+// TranscriptChunk merepresentasikan potongan dari transcript penuh.
+type TranscriptChunk struct {
+	Text        string
+	StartOffset int
+	EndOffset   int
+}
+
+// ScoredChunk merepresentasikan chunk transcript yang sudah dinilai (heuristic).
+type ScoredChunk struct {
+	Chunk TranscriptChunk
+	Score int
+}
+
 // Job menyimpan state untuk satu job.
 type Job struct {
-	ID        string             `json:"id"`
-	Status    JobStatus          `json:"status"`
-	VideoPath string             `json:"video_path,omitempty"`
-	Error     string             `json:"error,omitempty"`
-	Cancel    context.CancelFunc `json:"-"`
+	ID           string             `json:"id"`
+	OriginalURL  string             `json:"original_url"`
+	Status       JobStatus          `json:"status"`
+	VideoPaths   []string           `json:"video_paths,omitempty"`
+	Error        string             `json:"error,omitempty"`
+	SortedChunks []ScoredChunk      `json:"-"`
+	NextChunkIdx int                `json:"-"`
+	LayoutMode   string             `json:"-"`
+	Cancel       context.CancelFunc `json:"-"`
 }
 
 // JobStore mengelola state pekerjaan secara aman untuk concurrent access.
@@ -37,13 +54,14 @@ func NewJobStore() *JobStore {
 }
 
 // CreateJob mendaftarkan job baru ke dalam store dengan status "processing".
-func (s *JobStore) CreateJob(id string, cancel context.CancelFunc) {
+func (s *JobStore) CreateJob(id string, originalUrl string, cancel context.CancelFunc) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.jobs[id] = &Job{
-		ID:     id,
-		Status: StatusProcessing,
-		Cancel: cancel,
+		ID:          id,
+		OriginalURL: originalUrl,
+		Status:      StatusProcessing,
+		Cancel:      cancel,
 	}
 }
 
@@ -62,14 +80,23 @@ func (s *JobStore) GetJob(id string) (*Job, bool) {
 	return &jobCopy, true
 }
 
-// CompleteJob memperbarui status job menjadi "completed" dan menyimpan path video.
-func (s *JobStore) CompleteJob(id string, videoPath string) {
+// AddVideoPath menambahkan video path ke dalam job secara dinamis meskipun status masih processing.
+func (s *JobStore) AddVideoPath(id string, videoPath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if job, exists := s.jobs[id]; exists {
+		job.VideoPaths = append(job.VideoPaths, videoPath)
+	}
+}
+
+// CompleteJob memperbarui status job menjadi "completed".
+func (s *JobStore) CompleteJob(id string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if job, exists := s.jobs[id]; exists {
 		job.Status = StatusCompleted
-		job.VideoPath = videoPath
 	}
 }
 
@@ -98,4 +125,41 @@ func (s *JobStore) CancelJob(id string) {
 			job.Error = "Proses dibatalkan oleh pengguna"
 		}
 	}
+}
+
+// UpdateJobChunks menyimpan daftar chunk yang telah disortir dan mengatur indeks selanjutnya.
+func (s *JobStore) UpdateJobChunks(id string, chunks []ScoredChunk, nextIdx int, layoutMode string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if job, exists := s.jobs[id]; exists {
+		job.SortedChunks = chunks
+		job.NextChunkIdx = nextIdx
+		job.LayoutMode = layoutMode
+	}
+}
+
+// SetProcessing mengembalikan status job menjadi processing (saat di-resume).
+func (s *JobStore) SetProcessing(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if job, exists := s.jobs[id]; exists {
+		job.Status = StatusProcessing
+		job.Error = ""
+	}
+}
+
+// IncrementNextChunkIdx menambahkan index chunk selanjutnya jika masih tersedia.
+func (s *JobStore) IncrementNextChunkIdx(id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if job, exists := s.jobs[id]; exists {
+		if job.NextChunkIdx < len(job.SortedChunks) {
+			job.NextChunkIdx++
+			return true
+		}
+	}
+	return false
 }
