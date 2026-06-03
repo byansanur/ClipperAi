@@ -145,15 +145,22 @@ class ClipProvider extends ChangeNotifier {
         },
       );
 
-      if (response.statusCode == 202) {
+      if (response.statusCode == 202 || response.statusCode == 200) {
         _jobId = response.data['job_id'];
         _state = UIState.loading;
         
         await _saveJobId(_jobId!); // Simpan ID ke local storage
         notifyListeners();
         
-        // Memulai asinkron polling status
-        _startPolling(_jobId!);
+        if (response.statusCode == 200) {
+          // Jika status 200 (cache hit), data job mungkin sudah ada
+          // Kita bisa langsung memanggil polling yang akan langsung menghentikan timer
+          // dan memindahkan ke state result
+          _startPolling(_jobId!);
+        } else {
+          // Memulai asinkron polling status normal
+          _startPolling(_jobId!);
+        }
       } else {
         throw Exception('Server returned status code: ${response.statusCode}');
       }
