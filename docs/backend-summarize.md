@@ -39,6 +39,10 @@ The ClipperAi backend is now a robust, resource-aware automation engine. It can 
      - **macOS (darwin)**: Uses `h264_videotoolbox` hardware acceleration for fast encoding on Apple Silicon.
      - **Linux (VPS)**: Falls back to `libx264` software encoding with `-preset veryfast` to avoid CPU timeout on low-spec servers.
 
+6. **Master Video Caching & Auto Cleanup Routine**
+   - The master video downloaded via `yt-dlp` is retained in disk and its path stored in the job state, allowing "Generate More" requests to instantly reuse the file without redownloading.
+   - A background goroutine runs periodically to purge expired jobs (TTL: 2 hours), automatically deleting temp files, output clips, and in-memory state to prevent disk bloat and memory leaks.
+
 ## 🐛 Critical Issues Resolved
 
 During development, several edge cases and bugs were addressed to ensure the system remains robust:

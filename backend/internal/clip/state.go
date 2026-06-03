@@ -3,6 +3,7 @@ package clip
 import (
 	"context"
 	"sync"
+	"time"
 )
 
 // JobStatus mewakili status sebuah job.
@@ -34,10 +35,12 @@ type Job struct {
 	Status       JobStatus          `json:"status"`
 	VideoPaths   []string           `json:"video_paths,omitempty"`
 	Error        string             `json:"error,omitempty"`
-	SortedChunks []ScoredChunk      `json:"-"`
-	NextChunkIdx int                `json:"-"`
-	LayoutMode   string             `json:"-"`
-	Cancel       context.CancelFunc `json:"-"`
+	SortedChunks  []ScoredChunk      `json:"-"`
+	NextChunkIdx  int                `json:"-"`
+	LayoutMode    string             `json:"-"`
+	Cancel        context.CancelFunc `json:"-"`
+	TempVideoPath string             `json:"-"`
+	CreatedAt     time.Time          `json:"-"`
 }
 
 // JobStore mengelola state pekerjaan secara aman untuk concurrent access.
@@ -62,6 +65,7 @@ func (s *JobStore) CreateJob(id string, originalUrl string, cancel context.Cance
 		OriginalURL: originalUrl,
 		Status:      StatusProcessing,
 		Cancel:      cancel,
+		CreatedAt:   time.Now(),
 	}
 }
 
@@ -177,4 +181,34 @@ func (s *JobStore) FindCompletedJob(youtubeURL string, layoutMode string) (*Job,
 		}
 	}
 	return nil, false
+}
+
+// SetTempVideoPath menyimpan path file master video sementara.
+func (s *JobStore) SetTempVideoPath(id string, path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if job, exists := s.jobs[id]; exists {
+		job.TempVideoPath = path
+	}
+}
+
+// CleanupExpiredJobs menghapus job yang sudah berumur lebih dari TTL dari memori,
+// dan mengembalikan daftarnya agar caller bisa menghapus file fisik terkait.
+func (s *JobStore) CleanupExpiredJobs(ttl time.Duration) []Job {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var expiredJobs []Job
+	now := time.Now()
+
+	for id, job := range s.jobs {
+		// Hapus jika sudah melewati TTL
+		if now.Sub(job.CreatedAt) > ttl {
+			expiredJobs = append(expiredJobs, *job)
+			delete(s.jobs, id)
+		}
+	}
+
+	return expiredJobs
 }

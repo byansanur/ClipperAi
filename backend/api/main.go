@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -39,6 +40,9 @@ func main() {
 	ollamaClient := ollama.NewClient(ollamaURL, ollamaModel)
 	service := clip.NewClipService(store, ollamaClient, outputDir)
 	handler := clip.NewClipHandler(store, service)
+
+	// Start background cleanup routine: interval 10 menit, TTL 2 jam (sesuai permintaan user)
+	service.StartCleanupRoutine(10*time.Minute, 2*time.Hour)
 
 	r := gin.Default()
 

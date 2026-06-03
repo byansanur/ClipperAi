@@ -545,5 +545,3 @@ The chunk with the highest score is processed first. All remaining chunks are st
 | **No Authentication** | The API is entirely public. | Add API key middleware. |
 | **HTTP 429 (Rate Limit)** | YouTube blocks IP addresses that fetch subtitles too aggressively. | Use cookies, rotating proxies, or implement exponential backoff. |
 | **LLM Accuracy** | `llama3.2` (3B parameters) can sometimes return slightly inaccurate timestamps. | Use a larger model or implement fallback parsing logic. |
-| **No Cleanup Routine** | The `outputs/` folder will grow indefinitely. | Add a cron job or a dedicated cleanup endpoint to delete old clips. |
-| **Re-download on Generate More** | `ProcessNextClip` re-downloads the source video each time because the temp file is deleted after the initial processing. | Retain the master file with a TTL-based cleanup, or use FFmpeg's direct URL seeking. |

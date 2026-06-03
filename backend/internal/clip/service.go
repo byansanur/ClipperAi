@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/sgo-byan/clipperai/internal/pkg/ffmpeg"
 	"github.com/sgo-byan/clipperai/internal/pkg/ollama"
@@ -81,7 +82,9 @@ func (s *ClipService) ProcessClip(ctx context.Context, cancel context.CancelFunc
 		s.store.FailJob(jobID, humanizeError(fmt.Errorf("failed to download video: %w", err).Error()))
 		return
 	}
-	defer os.Remove(tempPath)
+	// Simpan path temp file agar bisa di-reuse oleh ProcessNextClip.
+	// File ini akan dibersihkan oleh Cleanup Routine ketika TTL habis.
+	s.store.SetTempVideoPath(jobID, tempPath)
 
 	// Simpan chunk untuk Generate More
 	s.store.UpdateJobChunks(jobID, scoredChunks, 1, layoutMode) // index 1 karena 0 diproses sekarang
@@ -220,15 +223,22 @@ func (s *ClipService) ProcessNextClip(ctx context.Context, jobID string, nextIdx
 		return
 	}
 
-	// Step 2: Download ulang video master untuk clip ini agar menghemat disk space 
-	// (trade-off: menggunakan lebih banyak bandwidth/waktu)
-	tempPath := filepath.Join(s.outputDir, fmt.Sprintf("temp_%s_next_%d.mp4", jobID, nextIdx))
-	if err := ffmpeg.DownloadVideo(ctx, job.OriginalURL, tempPath); err != nil {
-		log.Printf("[SERVICE] Failed to redownload video for next clip job %s: %v", jobID, err)
-		s.store.FailJob(jobID, "Gagal mengunduh ulang video dari YouTube")
-		return
+	// Step 2: Cek apakah video master masih ada (dari caching ProcessClip).
+	// Jika tidak ada (misalnya sudah di-cleanup), maka download ulang.
+	tempPath := job.TempVideoPath
+	if _, err := os.Stat(tempPath); err != nil || tempPath == "" {
+		log.Printf("[SERVICE] Master video for job %s not found. Redownloading...", jobID)
+		tempPath = filepath.Join(s.outputDir, fmt.Sprintf("temp_%s_next_%d.mp4", jobID, nextIdx))
+		if err := ffmpeg.DownloadVideo(ctx, job.OriginalURL, tempPath); err != nil {
+			log.Printf("[SERVICE] Failed to redownload video for next clip job %s: %v", jobID, err)
+			s.store.FailJob(jobID, "Gagal mengunduh ulang video dari YouTube")
+			return
+		}
+		// Karena ini file re-download terpisah (fallback), kita hapus setelah selesai untuk hemat disk.
+		defer os.Remove(tempPath)
+	} else {
+		log.Printf("[SERVICE] Reusing existing master video for job %s", jobID)
 	}
-	defer os.Remove(tempPath)
 
 	// Step 3: Slice & crop video menjadi 9:16 vertikal
 	outputPath := filepath.Join(s.outputDir, fmt.Sprintf("output_clip_%s_%d.mp4", jobID, nextIdx))
@@ -243,4 +253,32 @@ func (s *ClipService) ProcessNextClip(ctx context.Context, jobID string, nextIdx
 
 	log.Printf("[SERVICE] Job %s next clip (%d) completed successfully", jobID, nextIdx)
 	s.store.CompleteJob(jobID)
+}
+
+// StartCleanupRoutine menjalankan background goroutine untuk membersihkan 
+// job dan file-file lama (expired) secara periodik.
+func (s *ClipService) StartCleanupRoutine(interval time.Duration, ttl time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			expiredJobs := s.store.CleanupExpiredJobs(ttl)
+			if len(expiredJobs) == 0 {
+				continue
+			}
+
+			for _, job := range expiredJobs {
+				// Hapus file master temp
+				if job.TempVideoPath != "" {
+					os.Remove(job.TempVideoPath)
+				}
+				// Hapus semua output clips
+				for _, vp := range job.VideoPaths {
+					os.Remove(filepath.Join(s.outputDir, filepath.Base(vp)))
+				}
+			}
+			log.Printf("[CLEANUP] Cleaned %d expired jobs and their files", len(expiredJobs))
+		}
+	}()
 }

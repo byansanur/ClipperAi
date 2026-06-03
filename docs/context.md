@@ -62,7 +62,8 @@
 - Step 5: On-Demand "Generate More"
     - Client POSTs to `/api/v1/clips/:id/next`.
     - Backend retrieves the next scored chunk from the Job's `SortedChunks`.
-    - Re-downloads the video, runs Ollama + FFmpeg, and appends the new clip path to `VideoPaths`.
+    - Reuses the cached master video (`temp_*.mp4`) if available, otherwise re-downloads it.
+    - Runs Ollama + FFmpeg, and appends the new clip path to `VideoPaths`.
     - Status returns to `"completed"` once done.
 
 ### 4. CRITICAL CONSTRAINTS:
@@ -70,6 +71,7 @@
 - Concurrency Safety: `clip/state.go` uses robust `sync.RWMutex` to prevent race conditions during HTTP GET polling.
 - Concurrency Limiter: `processingSemaphore` (buffered channel, capacity 1) prevents resource starvation when multiple goroutines are spawned.
 - Deduplication Caching: `FindCompletedJob` prevents redundant processing of the same URL + layout combination.
+- Auto Cleanup Routine: A background goroutine periodically (every 10 min) purges jobs older than 2 hours (TTL), deleting temp master videos, output clips, and memory state.
 - Error Boundaries: If yt-dlp, ffmpeg, or ollama fail inside the goroutine, update the job state to `"failed"` with the error reason so the client stops polling.
 
 ### 5. IMPLEMENTATION STATUS:
@@ -80,6 +82,7 @@
 - ✅ Concurrency Limiter (Semaphore): Completed
 - ✅ On-Demand Generate More: Completed
 - ✅ Smart Deduplication Caching: Completed
+- ✅ Master Video Caching & Auto Cleanup: Completed
 - ✅ Dynamic FFmpeg (Mac/Linux): Completed
 - ✅ Floating History Panel: Completed
 - ✅ System Back Navigation: Completed
