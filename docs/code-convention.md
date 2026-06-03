@@ -41,6 +41,13 @@
 - Assume the code will be formatted using `gofmt`. Do not manually write strange spacing or indentation.
 - **Meaningful Comments:** Do not add obvious comments (like `// This function returns true`). Provide comments ONLY for complex logic, such as explaining why a specific regex is used in the VTT parser or detailing the heuristic scoring formula.
 
+## 6. Platform-Adaptive Coding
+- When writing code that behaves differently per platform (e.g., FFmpeg encoder selection), use `runtime.GOOS` to detect the operating system at runtime.
+- Avoid `#ifdef`-style build tags unless strictly necessary. Prefer runtime detection for simplicity.
+- Always provide a **safe default** in the `else` branch (e.g., `libx264` for unknown platforms).
+- Log the detected platform on startup or at the decision point so debugging is straightforward.
+  - *Example:* `log.Printf("[FFMPEG] Detected OS: %s, using encoder: %s", runtime.GOOS, encoder)`
+
 ======================================================================
 
 # Flutter Coding Conventions & Standards
@@ -73,3 +80,16 @@
 ## 5. Clean Code
 - **Remove all useless default Flutter comments** (like the long explanations in the default `main.dart` file).
 - **Avoid nesting UI more than 4-5 indentation levels.** Break them down into smaller, reusable widgets.
+
+## 6. Platform-Adaptive Coding
+- Use `kIsWeb` (from `package:flutter/foundation.dart`) to conditionally execute Web-only code (e.g., DOM-based downloads via `universal_html`).
+- Use `Platform.isAndroid` / `Platform.isIOS` (from `dart:io`) for native-only paths, but guard these behind a `!kIsWeb` check to prevent Web build crashes.
+- Encapsulate platform-specific logic in dedicated service classes (e.g., `download_service.dart`) rather than inlining conditional branches directly in UI widgets.
+- *Example:*
+  ```dart
+  if (kIsWeb) {
+    // Web DOM download
+  } else {
+    // Native file download
+  }
+  ```
