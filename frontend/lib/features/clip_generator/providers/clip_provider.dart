@@ -20,8 +20,11 @@ class ClipProvider extends ChangeNotifier {
   String? _jobId;
   String? get jobId => _jobId;
 
-  String? _videoUrl;
-  String? get videoUrl => _videoUrl;
+  List<String>? _videoUrls;
+  List<String>? get videoUrls => _videoUrls;
+
+  bool _isGeneratingMore = false;
+  bool get isGeneratingMore => _isGeneratingMore;
 
   String getFullUrl(String path) {
     final cleanPath = path.startsWith('/') ? path : '/$path';
@@ -98,11 +101,18 @@ class ClipProvider extends ChangeNotifier {
     if (job == null) return;
     
     _jobId = id;
-    if (job.status == ClipStatus.completed) {
-      final path = job.videoPath ?? '';
-      final cleanPath = path.startsWith('/') ? path : '/$path';
-      _videoUrl = '${_apiClient.dio.options.baseUrl}$cleanPath';
+    final paths = job.videoPaths ?? [];
+    
+    if (paths.isNotEmpty) {
+      _videoUrls = paths.map((path) {
+        final cleanPath = path.startsWith('/') ? path : '/$path';
+        return '${_apiClient.dio.options.baseUrl}$cleanPath';
+      }).toList();
       _state = UIState.result;
+      
+      if (job.status == ClipStatus.processing) {
+        _startPolling(id);
+      }
     } else if (job.status == ClipStatus.failed) {
       _errorMessage = job.error ?? 'Backend gagal memproses klip video.';
       _state = UIState.error;
@@ -123,7 +133,7 @@ class ClipProvider extends ChangeNotifier {
     _state = UIState.submitting;
     _errorMessage = null;
     _jobId = null;
-    _videoUrl = null;
+    _videoUrls = null;
     notifyListeners();
 
     try {
@@ -154,6 +164,33 @@ class ClipProvider extends ChangeNotifier {
     }
   }
 
+  // Generate Next Clip on demand
+  Future<void> generateNextClip(String jobId) async {
+    _isGeneratingMore = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.dio.post('/api/v1/clips/$jobId/next');
+
+      if (response.statusCode == 202) {
+        // Start polling again because job is back to processing
+        _startPolling(jobId);
+      } else {
+        _isGeneratingMore = false;
+        notifyListeners();
+      }
+    } on DioException catch (e) {
+      _isGeneratingMore = false;
+      // We might want to show error without resetting everything
+      debugPrint('Error generating next clip: ${e.response?.data}');
+      notifyListeners();
+    } catch (e) {
+      _isGeneratingMore = false;
+      debugPrint('Error generating next clip: $e');
+      notifyListeners();
+    }
+  }
+
   // Polling Engine: Periksa status backend setiap 5 detik agar responsif
   void _startPolling(String id) {
     _pollingTimer?.cancel();
@@ -167,26 +204,36 @@ class ClipProvider extends ChangeNotifier {
           
           // Sinkronisasi status di dictionary utama agar history UI update real-time
           _jobStatuses[id] = job;
-          notifyListeners();
 
-          if (job.status == ClipStatus.completed) {
+          // Hentikan timer JIKA status sudah final (completed / failed)
+          if (job.status == ClipStatus.completed || job.status == ClipStatus.failed) {
             timer.cancel();
-            // Prefix output path dengan base URL backend
-            final path = job.videoPath ?? '';
-            final cleanPath = path.startsWith('/') ? path : '/$path';
-            
-            // Jika jobId yang sedang di-poll adalah halaman yg sedang dibuka (bukan proses background)
             if (_jobId == id) {
-              _videoUrl = '${_apiClient.dio.options.baseUrl}$cleanPath';
-              _state = UIState.result;
-              notifyListeners();
+              _isGeneratingMore = false; // reset loading state
             }
-          } else if (job.status == ClipStatus.failed) {
-            timer.cancel();
-            if (_jobId == id) {
+          }
+
+          if (_jobId == id) {
+            // Update daftar videoUrl jika ada yang baru (progressive delivery)
+            final paths = job.videoPaths ?? [];
+            if (paths.isNotEmpty) {
+              _videoUrls = paths.map((path) {
+                final cleanPath = path.startsWith('/') ? path : '/$path';
+                return '${_apiClient.dio.options.baseUrl}$cleanPath';
+              }).toList();
+
+              // Berubah ke ResultView jika belum
+              if (_state != UIState.result) {
+                _state = UIState.result;
+              }
+            }
+
+            if (job.status == ClipStatus.failed && paths.isEmpty) {
               _handleError(job.error ?? 'Backend gagal memproses klip video.');
             }
           }
+          
+          notifyListeners();
         }
       } catch (e) {
         if (e is DioException && e.response?.statusCode == 404) {
@@ -226,8 +273,9 @@ class ClipProvider extends ChangeNotifier {
     _pollingTimer?.cancel();
     _state = UIState.idle;
     _jobId = null;
-    _videoUrl = null;
+    _videoUrls = null;
     _errorMessage = null;
+    _isGeneratingMore = false;
     notifyListeners();
   }
 

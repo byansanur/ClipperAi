@@ -5,13 +5,13 @@ enum ClipStatus { processing, completed, failed, unknown }
 class JobResponse {
   final String id;
   final ClipStatus status;
-  final String? videoPath;
+  final List<String>? videoPaths;
   final String? error;
 
   JobResponse({
     required this.id,
     required this.status,
-    this.videoPath,
+    this.videoPaths,
     this.error,
   });
 
@@ -31,10 +31,15 @@ class JobResponse {
         mappedStatus = ClipStatus.unknown;
     }
 
+    List<String>? parsedVideoPaths;
+    if (json['video_paths'] != null) {
+      parsedVideoPaths = List<String>.from(json['video_paths']);
+    }
+
     return JobResponse(
       id: json['id'] ?? '',
       status: mappedStatus,
-      videoPath: json['video_path'],
+      videoPaths: parsedVideoPaths,
       error: json['error'],
     );
   }
