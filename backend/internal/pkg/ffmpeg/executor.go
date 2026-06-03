@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/google/uuid"
@@ -54,47 +55,49 @@ func SliceAndCrop(ctx context.Context, inputPath string, outputPath string, star
 	}
 	log.Printf("[FFMPEG] Input file size: %d bytes", info.Size())
 
-	var args []string
+	args := []string{"-y"}
+
+	// 1. Hardware Acceleration (Hanya untuk macOS)
+	if runtime.GOOS == "darwin" {
+		args = append(args, "-hwaccel", "videotoolbox")
+	}
+
+	// 2. Input File & Timing
+	args = append(args, "-ss", startTime, "-to", endTime, "-i", inputPath)
+
+	// 3. Filter berdasarkan Layout Mode
 	switch layoutMode {
 	case "presentation":
-		args = []string{
-			"-ss", startTime,
-			"-to", endTime,
-			"-i", inputPath,
-			"-filter_complex", "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=270:480,boxblur=10:10,scale=1080:1920[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p",
-			"-c:v", "libx264",
-			"-preset", "fast",
-			"-c:a", "aac",
-			"-movflags", "+faststart",
-			"-y", outputPath,
-		}
+		args = append(args, "-filter_complex", "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,scale=270:480,boxblur=10:10,scale=1080:1920[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p")
 	case "podcast":
-		args = []string{
-			"-ss", startTime,
-			"-to", endTime,
-			"-i", inputPath,
-			"-filter_complex", "[0:v]crop=iw/2:ih:0:0[left]; [0:v]crop=iw/2:ih:iw/2:0[right]; [left][right]vstack[stacked]; [stacked]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-			"-c:v", "libx264",
-			"-preset", "fast",
-			"-c:a", "aac",
-			"-movflags", "+faststart",
-			"-y", outputPath,
-		}
-	default:
-		// solo
-		args = []string{
-			"-ss", startTime,
-			"-to", endTime,
-			"-i", inputPath,
-			"-vf", "crop=ih*9/16:ih",
-			"-c:v", "libx264",
-			"-preset", "fast",
-			"-pix_fmt", "yuv420p",
-			"-c:a", "aac",
-			"-movflags", "+faststart",
-			"-y", outputPath,
-		}
+		args = append(args, "-filter_complex", "[0:v]crop=iw/2:ih:0:0[left]; [0:v]crop=iw/2:ih:iw/2:0[right]; [left][right]vstack[stacked]; [stacked]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,format=yuv420p")
+	default: // solo
+		args = append(args, "-vf", "crop=ih*9/16:ih,format=yuv420p")
 	}
+
+	// 4. Encoder Video Dinamis berdasarkan OS
+	if runtime.GOOS == "darwin" {
+		// Jalur Eksekutif: Akselerasi Hardware M1/M2/M3
+		args = append(args,
+			"-c:v", "h264_videotoolbox",
+			"-b:v", "3M", // Bitrate 3 Mbps untuk kualitas Vertical Clip
+		)
+	} else {
+		// Jalur Produksi Server: Linux VPS (Software Encoding)
+		args = append(args,
+			"-c:v", "libx264",
+			"-crf", "23",
+			"-preset", "veryfast", // Menghemat CPU agar tidak OOM/Timeout di VPS
+		)
+	}
+
+	// 5. Audio & Output Final
+	args = append(args,
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-movflags", "+faststart",
+		outputPath,
+	)
 
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 

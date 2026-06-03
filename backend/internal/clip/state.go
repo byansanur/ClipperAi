@@ -163,3 +163,18 @@ func (s *JobStore) IncrementNextChunkIdx(id string) bool {
 	}
 	return false
 }
+
+// FindCompletedJob mencari job yang sudah sukses dengan OriginalURL dan LayoutMode yang sama.
+func (s *JobStore) FindCompletedJob(youtubeURL string, layoutMode string) (*Job, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, job := range s.jobs {
+		if job.OriginalURL == youtubeURL && job.LayoutMode == layoutMode && job.Status == StatusCompleted {
+			// Kembalikan salinan
+			jobCopy := *job
+			return &jobCopy, true
+		}
+	}
+	return nil, false
+}

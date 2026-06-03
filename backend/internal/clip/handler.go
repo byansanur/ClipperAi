@@ -51,6 +51,18 @@ func (h *ClipHandler) SubmitClip(c *gin.Context) {
 		req.LayoutMode = "solo"
 	}
 
+	// Cek apakah URL dan Layout ini sudah pernah sukses diproses sebelumnya
+	if cachedJob, found := h.store.FindCompletedJob(req.YoutubeURL, req.LayoutMode); found {
+		// Jika ketemu, JANGAN buat job baru. Langsung kembalikan data job lama.
+		// Frontend akan otomatis me-load videoPaths yang sudah ada.
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Menggunakan hasil cache",
+			"job_id": cachedJob.ID,
+			"job":     cachedJob,
+		})
+		return
+	}
+
 	jobID := uuid.New().String()
 	
 	// Buat context dengan timeout 10 menit untuk proses keseluruhan
