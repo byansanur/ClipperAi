@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/api_client.dart';
 import '../models/job_response.dart';
+import '../models/trending_podcast.dart';
 
 enum UIState { idle, submitting, loading, result, error }
 
@@ -36,6 +37,25 @@ class ClipProvider extends ChangeNotifier {
 
   Timer? _pollingTimer;
 
+  // Trending Podcast State
+  List<TrendingPodcast> _trendingPodcasts = [];
+  List<TrendingPodcast> get trendingPodcasts => _trendingPodcasts;
+
+  String _selectedCategory = 'Semua';
+  String get selectedCategory => _selectedCategory;
+
+  bool _isLoadingTrending = false;
+  bool get isLoadingTrending => _isLoadingTrending;
+
+  List<TrendingPodcast> get filteredTrendingPodcasts {
+    if (_selectedCategory == 'Semua') {
+      return _trendingPodcasts;
+    }
+    return _trendingPodcasts
+        .where((item) => item.category == _selectedCategory)
+        .toList();
+  }
+
   // Manajemen Riwayat Job Lokal
   List<String> _savedJobIds = [];
   List<String> get savedJobIds => _savedJobIds;
@@ -45,6 +65,106 @@ class ClipProvider extends ChangeNotifier {
 
   ClipProvider() {
     initStorage();
+    fetchTrendingPodcasts();
+  }
+
+  void selectCategory(String category) {
+    _selectedCategory = category;
+    notifyListeners();
+  }
+
+  Future<void> fetchTrendingPodcasts() async {
+    _isLoadingTrending = true;
+    notifyListeners();
+
+    try {
+      final response = await _apiClient.dio.get('/api/v1/trending');
+      if (response.statusCode == 200 && response.data['trending'] != null) {
+        final List list = response.data['trending'];
+        _trendingPodcasts = list.map((e) => TrendingPodcast.fromJson(e)).toList();
+      } else {
+        _loadFallbackTrending();
+      }
+    } catch (e) {
+      _loadFallbackTrending();
+    } finally {
+      _isLoadingTrending = false;
+      notifyListeners();
+    }
+  }
+
+  void _loadFallbackTrending() {
+    _trendingPodcasts = const [
+      TrendingPodcast(
+        id: 'trend-1',
+        title: 'Sam Altman: OpenAI, GPT-5, Sora, and AGI',
+        channelName: 'Lex Fridman',
+        youtubeUrl: 'https://www.youtube.com/watch?v=jvqFAi7vkBc',
+        thumbnailUrl: 'https://img.youtube.com/vi/jvqFAi7vkBc/hqdefault.jpg',
+        duration: '2j 05m',
+        layoutMode: 'podcast',
+        category: 'Tech & AI',
+      ),
+      TrendingPodcast(
+        id: 'trend-2',
+        title: 'DEDDY CORBUZIER & PRABOWO SUBIANTO - EXCLUSIVE',
+        channelName: 'Close The Door',
+        youtubeUrl: 'https://www.youtube.com/watch?v=34d7uC4mG7E',
+        thumbnailUrl: 'https://img.youtube.com/vi/34d7uC4mG7E/hqdefault.jpg',
+        duration: '1j 12m',
+        layoutMode: 'podcast',
+        category: 'Talkshow',
+      ),
+      TrendingPodcast(
+        id: 'trend-3',
+        title: 'Yann LeCun: Meta AI, LLMs, and World Models',
+        channelName: 'Lex Fridman',
+        youtubeUrl: 'https://www.youtube.com/watch?v=5t1vTLU7tm8',
+        thumbnailUrl: 'https://img.youtube.com/vi/5t1vTLU7tm8/hqdefault.jpg',
+        duration: '2j 45m',
+        layoutMode: 'podcast',
+        category: 'Tech & AI',
+      ),
+      TrendingPodcast(
+        id: 'trend-4',
+        title: 'CARA BERPIKIR RATIONAL & SUKSES DI USIA MUDA',
+        channelName: 'Raditya Dika',
+        youtubeUrl: 'https://www.youtube.com/watch?v=kYJ7L1G4vQE',
+        thumbnailUrl: 'https://img.youtube.com/vi/kYJ7L1G4vQE/hqdefault.jpg',
+        duration: '48m',
+        layoutMode: 'solo',
+        category: 'Self Improvement',
+      ),
+      TrendingPodcast(
+        id: 'trend-5',
+        title: 'PODKESMAS #150: CERITA MASA LALU YANG BIKIN NGAKAK',
+        channelName: 'Podkesmas',
+        youtubeUrl: 'https://www.youtube.com/watch?v=680U8W32S6w',
+        thumbnailUrl: 'https://img.youtube.com/vi/680U8W32S6w/hqdefault.jpg',
+        duration: '1j 02m',
+        layoutMode: 'podcast',
+        category: 'Talkshow',
+      ),
+      TrendingPodcast(
+        id: 'trend-6',
+        title: 'Andrej Karpathy: Software 2.0, Neural Networks & Future of AI',
+        channelName: 'Dwarkesh Patel',
+        youtubeUrl: 'https://www.youtube.com/watch?v=c3b-T-eJg5E',
+        thumbnailUrl: 'https://img.youtube.com/vi/c3b-T-eJg5E/hqdefault.jpg',
+        duration: '1j 38m',
+        layoutMode: 'podcast',
+        category: 'Tech & AI',
+      ),
+    ];
+  }
+
+  Future<void> selectTrendingAndSubmit(
+    TrendingPodcast podcast,
+    TextEditingController urlController,
+  ) async {
+    urlController.text = podcast.youtubeUrl;
+    setLayout(podcast.layoutMode);
+    await submitYoutubeUrl(podcast.youtubeUrl);
   }
 
   Future<void> initStorage() async {

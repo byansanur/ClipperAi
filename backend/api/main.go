@@ -62,6 +62,7 @@ func main() {
 		v1.GET("/clips/:id", handler.GetClipStatus)
 		v1.DELETE("/clips/:id", handler.CancelClip)
 		v1.POST("/clips/:id/next", handler.GenerateNextClip)
+		v1.GET("/trending", handler.GetTrendingPodcasts)
 	}
 
 	log.Printf("[MAIN] Server starting on :%s", port)

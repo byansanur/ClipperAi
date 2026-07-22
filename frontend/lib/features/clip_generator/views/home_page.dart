@@ -5,8 +5,8 @@ import 'package:provider/provider.dart';
 import '../providers/clip_provider.dart';
 import 'loading_view.dart';
 import 'result_view.dart';
+import 'trending_podcasts_section.dart';
 import '../models/job_response.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/services/download_service.dart';
 
 class HomePage extends StatefulWidget {
@@ -227,6 +227,11 @@ class _HomePageState extends State<HomePage> {
                               ],
                             ),
                           ),
+                        ),
+                        
+                        // Trending Podcasts Section
+                        TrendingPodcastsSection(
+                          urlController: _urlController,
                         ),
                       ],
                     ),
